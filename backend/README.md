@@ -43,6 +43,8 @@ npm start
 | `npm run build`     | Compile TypeScript to `dist/`              |
 | `npm start`         | Run the compiled server from `dist/`       |
 | `npm run typecheck` | Type-check without emitting output         |
+| `npm run prisma:validate` | Validate `prisma/schema.prisma`      |
+| `npm run prisma:generate` | Regenerate the Prisma client         |
 
 ## Health check
 
@@ -62,6 +64,29 @@ Response `200 OK`:
 }
 ```
 
+## Database
+
+Prisma is configured against PostgreSQL. The foundation is in place; no models
+exist yet.
+
+| File                    | Purpose                                                  |
+| ----------------------- | -------------------------------------------------------- |
+| `prisma/schema.prisma`  | Datasource (`postgresql`) + generator. Models go here.    |
+| `prisma7.config.ts`     | Prisma 7 config: schema path, migrations path, `DATABASE_URL`. |
+| `.env`                  | Holds the real `DATABASE_URL`.                            |
+
+The generator writes the client to `src/generated/prisma` (gitignored). It is
+generated on demand with `npm run prisma:generate` once models exist.
+
+Set your own credentials in `.env`:
+
+```
+DATABASE_URL="postgresql://USER:PASSWORD@localhost:5432/habitra?schema=public"
+```
+
+Migrations will live in `prisma/migrations` and are created with
+`npx prisma migrate dev` once the first model is added.
+
 ## Structure
 
 ```
@@ -72,11 +97,16 @@ src/
 │   └── env.ts         # Typed environment access (PORT, NODE_ENV, DATABASE_URL)
 └── routes/
     └── health.ts      # GET /health
+
+prisma/
+└── schema.prisma      # Datasource + generator, no models yet
+prisma7.config.ts      # Prisma 7 configuration
 ```
 
 ## Planned growth (later phases)
 
-- `prisma/` — schema and migrations (PRD Phase 2+)
+- `prisma/schema.prisma` — models and relations, starting with `User` (PRD Phase 2)
+- `prisma/migrations/` — generated migrations
 - `src/routes/` — `/api/auth`, `/api/habits`, `/api/analytics`, `/api/agent`,
   `/api/memory`, `/api/challenges`, `/api/wallet`, `/api/blockchain`,
   `/api/telegram` (PRD section 29)

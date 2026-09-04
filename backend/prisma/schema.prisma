@@ -1,0 +1,15 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Database foundation only. Models are added incrementally, one PRD phase at a
+// time, starting with User in Phase 2 (authentication).
+// The connection string lives in .env and is wired up in prisma7.config.ts.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
