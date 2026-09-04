@@ -23,4 +23,26 @@ model User {
   passwordHash String
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+
+  habits Habit[]
+}
+
+/// A recurring habit owned by a User (PRD section 7).
+/// Only the data model is added here; routes/controllers/services come later.
+model Habit {
+  id            String   @id @default(cuid())
+  userId        String
+  name          String
+  description   String?
+  frequency     String
+  target        Int
+  preferredTime String?
+  status        String   @default("ACTIVE")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  /// Owning user. Deleting the user cascade-deletes their habits.
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
