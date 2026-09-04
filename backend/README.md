@@ -2,8 +2,9 @@
 
 Node.js + Express + TypeScript backend for Habitra.
 
-Stage 2 of the build (PRD Phase 1 — Foundation). Only the foundation exists:
-one health-check route. No database, no auth, no features.
+Foundation and database groundwork: a health-check route, the `User` model and
+its first migration, and the registration endpoint (`POST /api/auth/register`).
+Login and all other features are not implemented yet.
 
 ## Requirements
 
@@ -66,26 +67,74 @@ Response `200 OK`:
 
 ## Database
 
-Prisma is configured against PostgreSQL. The foundation is in place; no models
-exist yet.
+Prisma is configured against PostgreSQL. The first model, `User`, exists and has
+been migrated. No application code uses it yet.
 
 | File                    | Purpose                                                  |
 | ----------------------- | -------------------------------------------------------- |
-| `prisma/schema.prisma`  | Datasource (`postgresql`) + generator. Models go here.    |
+| `prisma/schema.prisma`  | Datasource (`postgresql`) + generator + models.           |
 | `prisma7.config.ts`     | Prisma 7 config: schema path, migrations path, `DATABASE_URL`. |
+| `prisma/migrations/`    | Generated migrations, committed to version control.       |
 | `.env`                  | Holds the real `DATABASE_URL`.                            |
 
-The generator writes the client to `src/generated/prisma` (gitignored). It is
-generated on demand with `npm run prisma:generate` once models exist.
+### User model
+
+```prisma
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+```
+
+`updatedAt` is maintained by Prisma at the client level, so it has no database
+default — that is expected Prisma behaviour.
+
+### Migrations
+
+Apply pending migrations (used in CI, no shadow database needed):
+
+```bash
+npx prisma migrate deploy
+```
+
+Create the next migration while developing:
+
+```bash
+npx prisma migrate dev --name <name>
+```
+
+Migration SQL can also be previewed offline without touching the database:
+
+```bash
+npx prisma migrate diff --from-empty --to-schema prisma/schema.prisma --script
+```
 
 Set your own credentials in `.env`:
 
 ```
-DATABASE_URL="postgresql://USER:PASSWORD@localhost:5432/habitra?schema=public"
+DATABASE_URL="postgresql://USER:PASSWORD@127.0.0.1:5432/habitra?schema=public&sslmode=disable&connect_timeout=30"
 ```
 
-Migrations will live in `prisma/migrations` and are created with
-`npx prisma migrate dev` once the first model is added.
+### Note on Prisma 7 clients
+
+Prisma 7's generated client requires a **driver adapter** to connect. When the
+first service needs the database (PRD Phase 2, authentication), instantiate it
+like this:
+
+```ts
+import { PrismaPg } from '@prisma/adapter-pg';
+import { PrismaClient } from '../generated/prisma/client.js';
+
+const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
+const prisma = new PrismaClient({ adapter });
+```
+
+`@prisma/adapter-pg` and `pg` are installed; the reusable client lives in
+`src/db/prisma.ts` and is instantiated exactly as shown above.
 
 ## Structure
 
@@ -95,20 +144,25 @@ src/
 ├── app.ts             # Builds the Express app (middleware + routers)
 ├── config/
 │   └── env.ts         # Typed environment access (PORT, NODE_ENV, DATABASE_URL)
+├── db/
+│   └── prisma.ts      # Shared Prisma client (driver adapter: PrismaPg)
 └── routes/
+    ├── auth.ts        # POST /api/auth/register
     └── health.ts      # GET /health
 
 prisma/
-└── schema.prisma      # Datasource + generator, no models yet
+├── schema.prisma      # Datasource + generator + User model
+└── migrations/
+    ├── 20260904194003_init/migration.sql   # Creates the User table
+    └── migration_lock.toml
 prisma7.config.ts      # Prisma 7 configuration
 ```
 
 ## Planned growth (later phases)
 
-- `prisma/schema.prisma` — models and relations, starting with `User` (PRD Phase 2)
-- `prisma/migrations/` — generated migrations
-- `src/routes/` — `/api/auth`, `/api/habits`, `/api/analytics`, `/api/agent`,
-  `/api/memory`, `/api/challenges`, `/api/wallet`, `/api/blockchain`,
+- `prisma/schema.prisma` — further models and relations (Habit, Challenge, …)
+- `src/routes/` — `/api/auth` (login/logout next), `/api/habits`, `/api/analytics`,
+  `/api/agent`, `/api/memory`, `/api/challenges`, `/api/wallet`, `/api/blockchain`,
   `/api/telegram` (PRD section 29)
 - `src/middleware/` — auth, validation, error handling
 - `src/services/` — analytics, agent, Sibyl Memory, blockchain

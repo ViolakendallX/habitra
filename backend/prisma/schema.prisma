@@ -1,8 +1,8 @@
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
-// Database foundation only. Models are added incrementally, one PRD phase at a
-// time, starting with User in Phase 2 (authentication).
+// Models are added incrementally, one PRD phase at a time. This is the first:
+// User, which is consumed by Phase 2 (authentication).
 // The connection string lives in .env and is wired up in prisma7.config.ts.
 
 generator client {
@@ -12,4 +12,15 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+}
+
+/// Account that owns habits, challenges, and memory in Habitra.
+/// Created during registration (Phase 2); this model only defines the shape.
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }
