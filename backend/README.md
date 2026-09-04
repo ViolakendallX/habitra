@@ -3,8 +3,9 @@
 Node.js + Express + TypeScript backend for Habitra.
 
 Foundation and database groundwork: a health-check route, the `User` model and
-its first migration, and the registration endpoint (`POST /api/auth/register`).
-Login and all other features are not implemented yet.
+its first migration, the registration endpoint (`POST /api/auth/register`), and
+the login endpoint (`POST /api/auth/login`). Logout, JWT, sessions, and all
+other features are not implemented yet.
 
 ## Requirements
 
@@ -136,6 +137,41 @@ const prisma = new PrismaClient({ adapter });
 `@prisma/adapter-pg` and `pg` are installed; the reusable client lives in
 `src/db/prisma.ts` and is instantiated exactly as shown above.
 
+## Authentication (PRD section 6)
+
+Both routes live under the `/api/auth` router (`src/routes/auth.ts`). They share
+a `normalizeEmail` helper (trim + lowercase) so `  ADA@Example.COM ` and
+`ada@example.com` resolve to the same account, and a `publicUserFields` Prisma
+`select` that never returns `passwordHash`.
+
+### Registration — `POST /api/auth/register`
+
+```json
+{ "name": "Ada Lovelace", "email": "ada@example.com", "password": "supersecret1" }
+```
+
+- Validates with Zod (name 1–100, email, password 8–72 chars), then normalizes.
+- Rejects an existing email with `409 Conflict`. Hashes the password with bcrypt
+  (cost 12) before saving.
+- Success → `201` with `{ id, name, email, createdAt, updatedAt }` (no `passwordHash`).
+
+### Login — `POST /api/auth/login`
+
+```json
+{ "email": "ada@example.com", "password": "supersecret1" }
+```
+
+- Validates with Zod, then normalizes the email the same way as registration.
+- Finds the user by normalized email, then verifies the password with
+  `bcrypt.compare` against the stored hash.
+- Unknown email **and** wrong password both return the same generic `401`:
+  `{"status":"error","message":"Invalid email or password."}` — the response never
+  reveals which one failed (no account enumeration). No passwords or hashes are logged.
+- Success → `200` with `{ id, name, email, createdAt, updatedAt }` (no `passwordHash`).
+
+Login, JWT, and sessions are intentionally **not** implemented yet — a successful
+login currently just returns the safe user profile.
+
 ## Structure
 
 ```
@@ -147,7 +183,7 @@ src/
 ├── db/
 │   └── prisma.ts      # Shared Prisma client (driver adapter: PrismaPg)
 └── routes/
-    ├── auth.ts        # POST /api/auth/register
+    ├── auth.ts        # POST /api/auth/register, POST /api/auth/login
     └── health.ts      # GET /health
 
 prisma/
@@ -161,7 +197,7 @@ prisma7.config.ts      # Prisma 7 configuration
 ## Planned growth (later phases)
 
 - `prisma/schema.prisma` — further models and relations (Habit, Challenge, …)
-- `src/routes/` — `/api/auth` (login/logout next), `/api/habits`, `/api/analytics`,
+- `src/routes/` — `/api/auth` (logout next), `/api/habits`, `/api/analytics`,
   `/api/agent`, `/api/memory`, `/api/challenges`, `/api/wallet`, `/api/blockchain`,
   `/api/telegram` (PRD section 29)
 - `src/middleware/` — auth, validation, error handling

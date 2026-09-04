@@ -9,6 +9,8 @@ import { prisma } from '../db/prisma.js';
  *
  * Registration flow:
  *   validate input -> check existing email -> hash password -> create user
+ * Login flow:
+ *   validate input -> find user by normalized email -> verify bcrypt hash
  *
  * bcrypt cost factor. 12 rounds is the current OWASP recommendation; raise it
  * if the hosting hardware gets faster.
@@ -43,8 +45,23 @@ const registrationSchema = z.object({
     .max(72, 'Password must be 72 characters or fewer.'),
 });
 
+const loginSchema = z.object({
+  email: z
+    .email('Enter a valid email address.')
+    .max(255, 'Email must be 255 characters or fewer.'),
+  password: z
+    .string()
+    .min(1, 'Password is required.')
+    .max(72, 'Password must be 72 characters or fewer.'),
+});
+
 type RegistrationInput = {
   name?: unknown;
+  email?: unknown;
+  password?: unknown;
+};
+
+type LoginInput = {
   email?: unknown;
   password?: unknown;
 };
@@ -54,13 +71,21 @@ function readString(value: unknown): string | undefined {
 }
 
 /**
- * Trims whitespace and lowercases the email before validation so that
- * "Ada@Example.com " and "ada@example.com" resolve to the same account.
+ * Trims whitespace and lowercases an email. Shared by registration and login
+ * so the same address always resolves to the same account
+ * (e.g. "  Ada@Example.COM " and "ada@example.com" are identical).
+ */
+function normalizeEmail(value: unknown): string | undefined {
+  return readString(value)?.trim().toLowerCase();
+}
+
+/**
+ * Normalizes registration input before validation.
  */
 function normalizeRegistrationInput(body: RegistrationInput) {
   return {
     name: readString(body.name)?.trim(),
-    email: readString(body.email)?.trim().toLowerCase(),
+    email: normalizeEmail(body.email),
     password: readString(body.password),
   };
 }
@@ -130,4 +155,61 @@ authRouter.post('/register', async (req: Request, res: Response) => {
 
     throw error;
   }
+});
+
+function normalizeLoginInput(body: LoginInput) {
+  return {
+    email: normalizeEmail(body.email),
+    password: readString(body.password),
+  };
+}
+
+authRouter.post('/login', async (req: Request, res: Response) => {
+  const parsed = loginSchema.safeParse(
+    normalizeLoginInput((req.body ?? {}) as LoginInput),
+  );
+
+  if (!parsed.success) {
+    res.status(400).json({
+      status: 'error',
+      message: 'Validation failed.',
+      errors: z.flattenError(parsed.error).fieldErrors,
+    });
+    return;
+  }
+
+  const { email, password } = parsed.data;
+
+  const user = await prisma.user.findUnique({
+    where: { email },
+    // passwordHash is selected only to verify the password; it is never returned.
+    select: { ...publicUserFields, passwordHash: true },
+  });
+
+  // Generic failure for BOTH "unknown email" and "wrong password" so the
+  // response never reveals which one was wrong (no account enumeration).
+  if (!user) {
+    res.status(401).json({ status: 'error', message: 'Invalid email or password.' });
+    return;
+  }
+
+  const passwordMatches = await bcrypt.compare(password, user.passwordHash);
+
+  if (!passwordMatches) {
+    res.status(401).json({ status: 'error', message: 'Invalid email or password.' });
+    return;
+  }
+
+  res.status(200).json({
+    status: 'success',
+    data: {
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+      },
+    },
+  });
 });
