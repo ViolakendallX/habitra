@@ -3,6 +3,14 @@ import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 
 import { prisma } from '../db/prisma.js';
+import {
+  AUTH_COOKIE,
+  buildClearCookieOptions,
+  buildCookieOptions,
+  signAuthToken,
+} from '../auth/jwt.js';
+import { requireAuth } from '../middleware/auth.js';
+import { publicUserFields } from '../auth/select.js';
 
 /**
  * Authentication routes (PRD section 6).
@@ -16,19 +24,6 @@ import { prisma } from '../db/prisma.js';
  * if the hosting hardware gets faster.
  */
 const SALT_ROUNDS = 12;
-
-/**
- * Columns that are safe to expose. passwordHash is deliberately omitted, and
- * the list is applied through Prisma's `select` so fields added to the User
- * model later can never leak by accident.
- */
-const publicUserFields = {
-  id: true,
-  name: true,
-  email: true,
-  createdAt: true,
-  updatedAt: true,
-} as const;
 
 const registrationSchema = z.object({
   name: z
@@ -200,6 +195,10 @@ authRouter.post('/login', async (req: Request, res: Response) => {
     return;
   }
 
+  // Successful login: issue a JWT inside an HttpOnly cookie (never returned in JSON).
+  const token = signAuthToken(user.id);
+  res.cookie(AUTH_COOKIE, token, buildCookieOptions());
+
   res.status(200).json({
     status: 'success',
     data: {
@@ -212,4 +211,14 @@ authRouter.post('/login', async (req: Request, res: Response) => {
       },
     },
   });
+});
+
+authRouter.get('/me', requireAuth, (req: Request, res: Response) => {
+  res.status(200).json({ status: 'success', data: { user: req.authUser } });
+});
+
+authRouter.post('/logout', (_req: Request, res: Response) => {
+  // Clear the session cookie. No database row is deleted (stateless JWT).
+  res.clearCookie(AUTH_COOKIE, buildClearCookieOptions());
+  res.status(200).json({ status: 'success', message: 'Logged out.' });
 });

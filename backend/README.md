@@ -76,7 +76,7 @@ been migrated. No application code uses it yet.
 | `prisma/schema.prisma`  | Datasource (`postgresql`) + generator + models.           |
 | `prisma7.config.ts`     | Prisma 7 config: schema path, migrations path, `DATABASE_URL`. |
 | `prisma/migrations/`    | Generated migrations, committed to version control.       |
-| `.env`                  | Holds the real `DATABASE_URL`.                            |
+| `.env`                  | Holds the real `DATABASE_URL` and `JWT_SECRET` (never commit). |
 
 ### User model
 
@@ -139,10 +139,11 @@ const prisma = new PrismaClient({ adapter });
 
 ## Authentication (PRD section 6)
 
-Both routes live under the `/api/auth` router (`src/routes/auth.ts`). They share
-a `normalizeEmail` helper (trim + lowercase) so `  ADA@Example.COM ` and
-`ada@example.com` resolve to the same account, and a `publicUserFields` Prisma
-`select` that never returns `passwordHash`.
+The routes live under the `/api/auth` router (`src/routes/auth.ts`). Registration
+and login share a `normalizeEmail` helper (trim + lowercase) so
+`  ADA@Example.COM ` and `ada@example.com` resolve to the same account. All user
+responses use a `publicUserFields` Prisma `select` that never returns
+`passwordHash`.
 
 ### Registration — `POST /api/auth/register`
 
@@ -167,10 +168,31 @@ a `normalizeEmail` helper (trim + lowercase) so `  ADA@Example.COM ` and
 - Unknown email **and** wrong password both return the same generic `401`:
   `{"status":"error","message":"Invalid email or password."}` — the response never
   reveals which one failed (no account enumeration). No passwords or hashes are logged.
-- Success → `200` with `{ id, name, email, createdAt, updatedAt }` (no `passwordHash`).
+- Success → `200` with `{ id, name, email, createdAt, updatedAt }` (no `passwordHash`)
+  and sets a seven-day HS256 JWT in the `habitra_auth` cookie.
 
-Login, JWT, and sessions are intentionally **not** implemented yet — a successful
-login currently just returns the safe user profile.
+### Authenticated user — `GET /api/auth/me`
+
+Uses the reusable `requireAuth` middleware to verify the JWT cookie and load the
+current user from PostgreSQL. Missing, expired, malformed, tampered, and
+user-not-found states all return the same generic `401` response. Success → `200`
+with `{ id, name, email, createdAt, updatedAt }` and never `passwordHash`.
+
+### Logout — `POST /api/auth/logout`
+
+Clears `habitra_auth` by emitting an expired cookie with matching path, SameSite,
+and Secure attributes. JWT sessions are stateless, so no database row is deleted.
+
+### JWT cookie
+
+- JWT payload: only the user id in the standard `sub` claim, plus `iat` and `exp`.
+- Algorithm: HS256; lifetime: seven days; secret: `JWT_SECRET` from the environment.
+- Cookie: `HttpOnly`, `Path=/`, seven-day `Max-Age`; `SameSite=Lax` and non-Secure
+  for local HTTP development; `SameSite=None` + `Secure` in production for the
+  expected separately hosted frontend/API.
+- The JWT is never placed in response JSON, localStorage, or frontend-readable code.
+
+Refresh tokens and OAuth are intentionally not implemented.
 
 ## Structure
 
@@ -178,12 +200,17 @@ login currently just returns the safe user profile.
 src/
 ├── index.ts           # Entry point: starts the HTTP server, graceful shutdown
 ├── app.ts             # Builds the Express app (middleware + routers)
+├── auth/
+│   ├── jwt.ts         # JWT signing/verification + cookie options
+│   └── select.ts      # Safe public-user shape and Prisma select
 ├── config/
-│   └── env.ts         # Typed environment access (PORT, NODE_ENV, DATABASE_URL)
+│   └── env.ts         # Typed environment access (PORT, DATABASE_URL, JWT_SECRET)
 ├── db/
 │   └── prisma.ts      # Shared Prisma client (driver adapter: PrismaPg)
+├── middleware/
+│   └── auth.ts        # Reusable requireAuth middleware
 └── routes/
-    ├── auth.ts        # POST /api/auth/register, POST /api/auth/login
+    ├── auth.ts        # register, login, me, and logout
     └── health.ts      # GET /health
 
 prisma/
@@ -197,8 +224,7 @@ prisma7.config.ts      # Prisma 7 configuration
 ## Planned growth (later phases)
 
 - `prisma/schema.prisma` — further models and relations (Habit, Challenge, …)
-- `src/routes/` — `/api/auth` (logout next), `/api/habits`, `/api/analytics`,
-  `/api/agent`, `/api/memory`, `/api/challenges`, `/api/wallet`, `/api/blockchain`,
-  `/api/telegram` (PRD section 29)
-- `src/middleware/` — auth, validation, error handling
+- `src/routes/` — `/api/habits`, `/api/analytics`, `/api/agent`, `/api/memory`,
+  `/api/challenges`, `/api/wallet`, `/api/blockchain`, `/api/telegram` (PRD section 29)
+- `src/middleware/` — validation and further request guards (authentication exists)
 - `src/services/` — analytics, agent, Sibyl Memory, blockchain
