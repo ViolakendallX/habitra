@@ -1,0 +1,65 @@
+:root {
+  --habitra-bg: #f7f7f5;
+  --habitra-surface: #ffffff;
+  --habitra-border: #e4e4e0;
+  --habitra-text: #1b1b19;
+  --habitra-muted: #6b6b66;
+  --habitra-accent: #c2410c;
+
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial,
+    sans-serif;
+  line-height: 1.5;
+  color: var(--habitra-text);
+  background-color: var(--habitra-bg);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+.shell {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 64px 24px;
+}
+
+.shell__title {
+  margin: 0;
+  font-size: 2rem;
+  letter-spacing: -0.02em;
+}
+
+.shell__tagline {
+  margin: 4px 0 32px;
+  color: var(--habitra-muted);
+}
+
+.card {
+  background-color: var(--habitra-surface);
+  border: 1px solid var(--habitra-border);
+  border-radius: 12px;
+  padding: 24px;
+}
+
+.card__title {
+  margin: 0 0 8px;
+  font-size: 1.125rem;
+}
+
+.card__text {
+  margin: 0 0 16px;
+  color: var(--habitra-muted);
+}
+
+.card__list {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--habitra-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.875rem;
+}
