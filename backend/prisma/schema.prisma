@@ -25,6 +25,8 @@ model User {
   updatedAt    DateTime @updatedAt
 
   habits Habit[]
+  /// Cascade-deleted when the user is removed.
+  habitCompletions HabitCompletion[]
 }
 
 /// A recurring habit owned by a User (PRD section 7).
@@ -44,5 +46,36 @@ model Habit {
   /// Owning user. Deleting the user cascade-deletes their habits.
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  /// Daily completion/miss records for this habit. Cascade-deleted with the habit.
+  completions HabitCompletion[]
+
   @@index([userId])
+}
+
+/// A single daily record of a habit being completed or missed (PRD section 8).
+/// Only the data model is added here; the completion/API routes come in a later
+/// stage. `status` is `COMPLETED` or `MISSED` (enforced by the application layer,
+/// kept as a plain String like the other enum-like columns). `date` is the
+/// calendar day the record applies to and must be normalized (e.g. start-of-day
+/// UTC) by callers; the unique constraint on (habitId, date) guarantees at most
+/// one record per habit per day.
+model HabitCompletion {
+  id         String   @id @default(cuid())
+  habitId    String
+  userId     String
+  date       DateTime
+  status     String
+  missReason String?
+  createdAt  DateTime @default(now())
+
+  habit Habit @relation(fields: [habitId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Lookups by owner, by habit, by day, and by owner+day / habit+day.
+  @@index([userId])
+  @@index([habitId])
+  @@index([date])
+  @@index([userId, date])
+  /// At most one record per habit per calendar date.
+  @@unique([habitId, date])
 }
