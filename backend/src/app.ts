@@ -1,5 +1,6 @@
 import express, { type Express, type Request, type Response } from 'express';
 
+import { analyticsRouter } from './routes/analytics.js';
 import { authRouter } from './routes/auth.js';
 import { habitsRouter } from './routes/habits.js';
 import { healthRouter } from './routes/health.js';
@@ -18,6 +19,7 @@ export function createApp(): Express {
   app.use(healthRouter);
   app.use('/api/auth', authRouter);
   app.use('/api/habits', habitsRouter);
+  app.use('/api', analyticsRouter);
 
   app.use((_req: Request, res: Response) => {
     res.status(404).json({ status: 'error', message: 'Route not found' });
