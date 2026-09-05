@@ -2,10 +2,14 @@
 
 Node.js + Express + TypeScript backend for Habitra.
 
-Foundation and database groundwork: a health-check route, the `User` model and
-its first migration, the registration endpoint (`POST /api/auth/register`), and
-the login endpoint (`POST /api/auth/login`). Logout, JWT, sessions, and all
-other features are not implemented yet.
+Foundation, database groundwork, and authentication: a health-check route, the
+`User` model and its first migration, registration (`POST /api/auth/register`),
+login (`POST /api/auth/login`), a JWT session layer with `GET /api/auth/me` and
+`POST /api/auth/logout`, the reusable `requireAuth` middleware, and habit
+creation (`POST /api/habits`).
+
+Editing, deleting, pausing, completing, and all other habit features are not
+implemented yet.
 
 ## Requirements
 
@@ -68,8 +72,8 @@ Response `200 OK`:
 
 ## Database
 
-Prisma is configured against PostgreSQL. The first model, `User`, exists and has
-been migrated. No application code uses it yet.
+Prisma is configured against PostgreSQL. Two models exist and have been migrated:
+`User`, used by authentication, and `Habit`, created through `POST /api/habits`.
 
 | File                    | Purpose                                                  |
 | ----------------------- | -------------------------------------------------------- |
@@ -93,6 +97,32 @@ model User {
 
 `updatedAt` is maintained by Prisma at the client level, so it has no database
 default — that is expected Prisma behaviour.
+
+### Habit model
+
+```prisma
+model Habit {
+  id            String   @id @default(cuid())
+  userId        String
+  name          String
+  description   String?
+  frequency     String
+  target        Int
+  preferredTime String?
+  status        String   @default("ACTIVE")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+```
+
+`frequency` and `status` are plain `String` columns rather than Prisma enums, so
+the generated client exports no enums. The allowed values (`DAILY`/`WEEKLY` for
+`frequency`, `ACTIVE` at creation for `status`) are enforced by the route's Zod
+schema and by the code that writes the row.
 
 ### Migrations
 
@@ -194,6 +224,46 @@ and Secure attributes. JWT sessions are stateless, so no database row is deleted
 
 Refresh tokens and OAuth are intentionally not implemented.
 
+## Habits (PRD sections 7–8)
+
+The routes live under the `/api/habits` router (`src/routes/habits.ts`).
+
+### Create habit — `POST /api/habits`
+
+Requires authentication (`requireAuth`). The owner is always taken from the
+authenticated user; a `userId` in the request body is ignored.
+
+```json
+{
+  "name": "Morning Workout",
+  "description": "30 minutes of exercise",
+  "frequency": "DAILY",
+  "target": 1,
+  "preferredTime": "07:00"
+}
+```
+
+Validation (Zod v4), applied after trimming:
+
+| Field           | Rule                                                     |
+| --------------- | -------------------------------------------------------- |
+| `name`          | Required, trimmed, must not be empty, max 100 characters  |
+| `description`   | Optional/nullable, max 500 characters                    |
+| `frequency`     | Required, exactly `DAILY` or `WEEKLY`                    |
+| `target`        | Required, integer greater than 0                         |
+| `preferredTime` | Optional/nullable, 24-hour `HH:mm` when provided         |
+
+- Success → `201` with `{ status, data: { habit } }`. `status` is stored as
+  `ACTIVE`, and an omitted or empty `description`/`preferredTime` is stored as `NULL`.
+- Validation failure → `400` with `z.flattenError(...).fieldErrors`. A
+  whitespace-only name fails because it is trimmed to empty before the length check.
+- Missing, expired, or tampered session → the same generic `401` as the rest of the API.
+- Database failure → `500` with a generic message. Errors are not logged or
+  returned, so SQL, stack traces, and credentials cannot leak.
+
+Only the habit's own columns are selected, so no user record — and never a
+`passwordHash` — appears in the response.
+
 ## Structure
 
 ```
@@ -211,20 +281,23 @@ src/
 │   └── auth.ts        # Reusable requireAuth middleware
 └── routes/
     ├── auth.ts        # register, login, me, and logout
+    ├── habits.ts      # POST /api/habits (create)
     └── health.ts      # GET /health
 
 prisma/
-├── schema.prisma      # Datasource + generator + User model
+├── schema.prisma      # Datasource + generator + User and Habit models
 └── migrations/
-    ├── 20260904194003_init/migration.sql   # Creates the User table
+    ├── 20260904194003_init/migration.sql      # Creates the User table
+    ├── 20260904225128_add_habit/migration.sql # Creates the Habit table
     └── migration_lock.toml
 prisma7.config.ts      # Prisma 7 configuration
 ```
 
 ## Planned growth (later phases)
 
-- `prisma/schema.prisma` — further models and relations (Habit, Challenge, …)
-- `src/routes/` — `/api/habits`, `/api/analytics`, `/api/agent`, `/api/memory`,
+- `prisma/schema.prisma` — further models and relations (HabitCompletion, Challenge, …)
+- `src/routes/` — the rest of `/api/habits` (list, edit, delete, pause/resume,
+  complete, miss, history) plus `/api/analytics`, `/api/agent`, `/api/memory`,
   `/api/challenges`, `/api/wallet`, `/api/blockchain`, `/api/telegram` (PRD section 29)
 - `src/middleware/` — validation and further request guards (authentication exists)
 - `src/services/` — analytics, agent, Sibyl Memory, blockchain
