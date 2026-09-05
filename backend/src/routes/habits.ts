@@ -32,6 +32,63 @@ const createHabitSchema = z.object({
     .optional(),
 });
 
+const completionDatePattern = /^\d{4}-\d{2}-\d{2}$/;
+
+const createCompletionSchema = z
+  .object({
+    date: z
+      .string()
+      .regex(completionDatePattern, 'Date must be in YYYY-MM-DD format.'),
+    status: z.enum(['COMPLETED', 'MISSED'], {
+      error: 'Status must be COMPLETED or MISSED.',
+    }),
+    missReason: z
+      .string()
+      .trim()
+      .max(500, 'Miss reason must be 500 characters or fewer.')
+      .optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.status === 'COMPLETED' && value.missReason !== undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['missReason'],
+        message: 'Miss reason is only allowed when status is MISSED.',
+      });
+    }
+  });
+
+function normalizeCalendarDate(dateString: string): Date | null {
+  const [yearText, monthText, dayText] = dateString.split('-');
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) {
+    return null;
+  }
+
+  const normalized = new Date(Date.UTC(year, month - 1, day));
+
+  if (
+    normalized.getUTCFullYear() !== year
+    || normalized.getUTCMonth() !== month - 1
+    || normalized.getUTCDate() !== day
+  ) {
+    return null;
+  }
+
+  return normalized;
+}
+
+function isUniqueConstraintError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+
+  return (error as { code?: string }).code === 'P2002';
+}
+
 /**
  * The Habit columns that are safe to return from the API. Applied through
  * Prisma's `select` so columns added to the model later can never leak by
@@ -50,6 +107,16 @@ export const habitPublicFields = {
   status: true,
   createdAt: true,
   updatedAt: true,
+} as const;
+
+const completionPublicFields = {
+  id: true,
+  habitId: true,
+  userId: true,
+  date: true,
+  status: true,
+  missReason: true,
+  createdAt: true,
 } as const;
 
 export const habitsRouter: Router = Router();
@@ -132,6 +199,103 @@ habitsRouter.post('/', requireAuth, async (req: Request, res: Response) => {
     res.status(500).json({
       status: 'error',
       message: 'Unable to create habit.',
+    });
+  }
+});
+
+/**
+ * POST /api/habits/:habitId/completions
+ *
+ * Creates one daily completion/miss record for an owned habit.
+ */
+habitsRouter.post('/:habitId/completions', requireAuth, async (req: Request, res: Response) => {
+  const authenticatedUser = req.authUser;
+  if (!authenticatedUser) {
+    res.status(401).json(UNAUTHORIZED);
+    return;
+  }
+
+  const rawHabitId = req.params.habitId;
+  const habitId = Array.isArray(rawHabitId) ? rawHabitId[0] : rawHabitId;
+
+  if (!habitId) {
+    res.status(404).json({
+      status: 'error',
+      message: 'Habit not found.',
+    });
+    return;
+  }
+
+  const parsed = createCompletionSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(400).json({
+      status: 'error',
+      message: 'Validation failed.',
+      errors: z.flattenError(parsed.error).fieldErrors,
+    });
+    return;
+  }
+
+  const normalizedDate = normalizeCalendarDate(parsed.data.date);
+  if (!normalizedDate) {
+    res.status(400).json({
+      status: 'error',
+      message: 'Validation failed.',
+      errors: {
+        date: ['Date must be a valid calendar date.'],
+      },
+    });
+    return;
+  }
+
+  const missReason = parsed.data.status === 'MISSED'
+    ? (parsed.data.missReason || null)
+    : null;
+
+  try {
+    const ownedHabit = await prisma.habit.findFirst({
+      where: {
+        id: habitId,
+        userId: authenticatedUser.id,
+      },
+      select: { id: true },
+    });
+
+    if (!ownedHabit) {
+      res.status(404).json({
+        status: 'error',
+        message: 'Habit not found.',
+      });
+      return;
+    }
+
+    const completion = await prisma.habitCompletion.create({
+      data: {
+        habitId: ownedHabit.id,
+        userId: authenticatedUser.id,
+        date: normalizedDate,
+        status: parsed.data.status,
+        missReason,
+      },
+      select: completionPublicFields,
+    });
+
+    res.status(201).json({
+      status: 'success',
+      data: { completion },
+    });
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      res.status(409).json({
+        status: 'error',
+        message: 'A completion already exists for this habit and date.',
+      });
+      return;
+    }
+
+    res.status(500).json({
+      status: 'error',
+      message: 'Unable to create completion.',
     });
   }
 });
