@@ -58,6 +58,17 @@ const createCompletionSchema = z
     }
   });
 
+const completionHistoryQuerySchema = z.object({
+  from: z
+    .string()
+    .regex(completionDatePattern, 'From must be in YYYY-MM-DD format.')
+    .optional(),
+  to: z
+    .string()
+    .regex(completionDatePattern, 'To must be in YYYY-MM-DD format.')
+    .optional(),
+});
+
 function normalizeCalendarDate(dateString: string): Date | null {
   const [yearText, monthText, dayText] = dateString.split('-');
   const year = Number(yearText);
@@ -87,6 +98,11 @@ function isUniqueConstraintError(error: unknown): boolean {
   }
 
   return (error as { code?: string }).code === 'P2002';
+}
+
+function resolveHabitId(req: Request): string | undefined {
+  const rawHabitId = req.params.habitId;
+  return Array.isArray(rawHabitId) ? rawHabitId[0] : rawHabitId;
 }
 
 /**
@@ -215,8 +231,7 @@ habitsRouter.post('/:habitId/completions', requireAuth, async (req: Request, res
     return;
   }
 
-  const rawHabitId = req.params.habitId;
-  const habitId = Array.isArray(rawHabitId) ? rawHabitId[0] : rawHabitId;
+  const habitId = resolveHabitId(req);
 
   if (!habitId) {
     res.status(404).json({
@@ -296,6 +311,118 @@ habitsRouter.post('/:habitId/completions', requireAuth, async (req: Request, res
     res.status(500).json({
       status: 'error',
       message: 'Unable to create completion.',
+    });
+  }
+});
+
+/**
+ * GET /api/habits/:habitId/completions
+ *
+ * Returns completion history for an owned habit, optionally filtered by an
+ * inclusive date range.
+ */
+habitsRouter.get('/:habitId/completions', requireAuth, async (req: Request, res: Response) => {
+  const authenticatedUser = req.authUser;
+  if (!authenticatedUser) {
+    res.status(401).json(UNAUTHORIZED);
+    return;
+  }
+
+  const habitId = resolveHabitId(req);
+  if (!habitId) {
+    res.status(404).json({
+      status: 'error',
+      message: 'Habit not found.',
+    });
+    return;
+  }
+
+  const parsedQuery = completionHistoryQuerySchema.safeParse(req.query ?? {});
+  if (!parsedQuery.success) {
+    res.status(400).json({
+      status: 'error',
+      message: 'Validation failed.',
+      errors: z.flattenError(parsedQuery.error).fieldErrors,
+    });
+    return;
+  }
+
+  const normalizedFrom = parsedQuery.data.from
+    ? normalizeCalendarDate(parsedQuery.data.from)
+    : null;
+  const normalizedTo = parsedQuery.data.to
+    ? normalizeCalendarDate(parsedQuery.data.to)
+    : null;
+
+  const dateErrors: Record<string, string[]> = {};
+
+  if (parsedQuery.data.from && !normalizedFrom) {
+    dateErrors.from = ['From must be a valid calendar date.'];
+  }
+
+  if (parsedQuery.data.to && !normalizedTo) {
+    dateErrors.to = ['To must be a valid calendar date.'];
+  }
+
+  if (Object.keys(dateErrors).length > 0) {
+    res.status(400).json({
+      status: 'error',
+      message: 'Validation failed.',
+      errors: dateErrors,
+    });
+    return;
+  }
+
+  if (normalizedFrom && normalizedTo && normalizedFrom.getTime() > normalizedTo.getTime()) {
+    res.status(400).json({
+      status: 'error',
+      message: 'Validation failed.',
+      errors: {
+        from: ['From must be on or before to.'],
+      },
+    });
+    return;
+  }
+
+  try {
+    const ownedHabit = await prisma.habit.findFirst({
+      where: {
+        id: habitId,
+        userId: authenticatedUser.id,
+      },
+      select: { id: true },
+    });
+
+    if (!ownedHabit) {
+      res.status(404).json({
+        status: 'error',
+        message: 'Habit not found.',
+      });
+      return;
+    }
+
+    const dateFilter = {
+      ...(normalizedFrom ? { gte: normalizedFrom } : {}),
+      ...(normalizedTo ? { lte: normalizedTo } : {}),
+    };
+
+    const completions = await prisma.habitCompletion.findMany({
+      where: {
+        habitId: ownedHabit.id,
+        ...(Object.keys(dateFilter).length > 0 ? { date: dateFilter } : {}),
+      },
+      orderBy: [{ date: 'desc' }, { id: 'desc' }],
+      select: completionPublicFields,
+    });
+
+    res.status(200).json({
+      status: 'success',
+      data: { completions },
+    });
+  } catch {
+    res.status(500).json({
+      status: 'error',
+      message: 'Unable to load completion history.',
     });
   }
 });
