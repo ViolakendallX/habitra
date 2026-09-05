@@ -5,8 +5,8 @@ Node.js + Express + TypeScript backend for Habitra.
 Foundation, database groundwork, and authentication: a health-check route, the
 `User` model and its first migration, registration (`POST /api/auth/register`),
 login (`POST /api/auth/login`), a JWT session layer with `GET /api/auth/me` and
-`POST /api/auth/logout`, the reusable `requireAuth` middleware, and habit
-creation (`POST /api/habits`).
+`POST /api/auth/logout`, the reusable `requireAuth` middleware, habit creation
+(`POST /api/habits`), and habit listing (`GET /api/habits`).
 
 Editing, deleting, pausing, completing, and all other habit features are not
 implemented yet.
@@ -228,6 +228,21 @@ Refresh tokens and OAuth are intentionally not implemented.
 
 The routes live under the `/api/habits` router (`src/routes/habits.ts`).
 
+### List habits — `GET /api/habits`
+
+Requires authentication (`requireAuth`). Returns **only** the authenticated
+user's habits, newest first (`createdAt` descending, `id` descending as a
+tiebreaker so habits created in the same millisecond still sort stably).
+
+- Success → `200` with `{ status: "success", data: { habits: [...] } }`. A user
+  with no habits gets `200` and `"habits": []` — never a 404.
+- The `userId` filter always comes from the session cookie resolved by
+  `requireAuth`. **No query parameter, body field, or header is read**, so
+  `GET /api/habits?userId=<someone-else>` is simply ignored and cannot expose
+  another user's rows.
+- Missing, expired, or tampered session → the same generic `401` as the rest of the API.
+- Database failure → `500` with a generic message; nothing is logged or returned.
+
 ### Create habit — `POST /api/habits`
 
 Requires authentication (`requireAuth`). The owner is always taken from the
@@ -281,7 +296,7 @@ src/
 │   └── auth.ts        # Reusable requireAuth middleware
 └── routes/
     ├── auth.ts        # register, login, me, and logout
-    ├── habits.ts      # POST /api/habits (create)
+    ├── habits.ts      # GET (list) and POST (create) /api/habits
     └── health.ts      # GET /health
 
 prisma/
@@ -296,7 +311,7 @@ prisma7.config.ts      # Prisma 7 configuration
 ## Planned growth (later phases)
 
 - `prisma/schema.prisma` — further models and relations (HabitCompletion, Challenge, …)
-- `src/routes/` — the rest of `/api/habits` (list, edit, delete, pause/resume,
+- `src/routes/` — the rest of `/api/habits` (fetch one, edit, delete, pause/resume,
   complete, miss, history) plus `/api/analytics`, `/api/agent`, `/api/memory`,
   `/api/challenges`, `/api/wallet`, `/api/blockchain`, `/api/telegram` (PRD section 29)
 - `src/middleware/` — validation and further request guards (authentication exists)

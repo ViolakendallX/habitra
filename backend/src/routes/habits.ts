@@ -32,7 +32,59 @@ const createHabitSchema = z.object({
     .optional(),
 });
 
+/**
+ * The Habit columns that are safe to return from the API. Applied through
+ * Prisma's `select` so columns added to the model later can never leak by
+ * accident, and shared by the create and list routes so both return the same
+ * shape. No relation is included, so no User field (and never a passwordHash)
+ * can appear in a habit response.
+ */
+export const habitPublicFields = {
+  id: true,
+  userId: true,
+  name: true,
+  description: true,
+  frequency: true,
+  target: true,
+  preferredTime: true,
+  status: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
+
 export const habitsRouter: Router = Router();
+
+/**
+ * GET /api/habits
+ *
+ * Lists the authenticated user's habits, newest first. The filter is always the
+ * id that requireAuth resolved from the session cookie; no query parameter,
+ * body field, or header is read, so a client cannot request another user's rows.
+ */
+habitsRouter.get('/', requireAuth, async (req: Request, res: Response) => {
+  const authenticatedUser = req.authUser;
+  if (!authenticatedUser) {
+    res.status(401).json(UNAUTHORIZED);
+    return;
+  }
+
+  try {
+    const habits = await prisma.habit.findMany({
+      where: { userId: authenticatedUser.id },
+      // `id` breaks ties so habits created in the same millisecond still have a
+      // stable, repeatable order.
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      select: habitPublicFields,
+    });
+
+    res.status(200).json({ status: 'success', data: { habits } });
+  } catch {
+    res.status(500).json({
+      status: 'error',
+      message: 'Unable to load habits.',
+    });
+  }
+});
 
 habitsRouter.post('/', requireAuth, async (req: Request, res: Response) => {
   const parsed = createHabitSchema.safeParse(req.body ?? {});
@@ -72,18 +124,7 @@ habitsRouter.post('/', requireAuth, async (req: Request, res: Response) => {
         preferredTime,
         status: 'ACTIVE',
       },
-      select: {
-        id: true,
-        userId: true,
-        name: true,
-        description: true,
-        frequency: true,
-        target: true,
-        preferredTime: true,
-        status: true,
-        createdAt: true,
-        updatedAt: true,
-      },
+      select: habitPublicFields,
     });
 
     res.status(201).json({ status: 'success', data: { habit } });
