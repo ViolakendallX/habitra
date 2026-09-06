@@ -11,7 +11,8 @@
     "test:register-ui": "node scripts/register_ui_test.mjs",
     "smoke:register": "node scripts/register_ui_smoke.mjs",
     "test:agent-ui": "node scripts/agent_ui_test.mjs",
-    "smoke:agent-ui": "node scripts/agent_ui_smoke.mjs"
+    "smoke:agent-ui": "node scripts/agent_ui_smoke.mjs",
+    "test:challenges-ui": "node scripts/challenges_ui_test.mjs"
   },
   "dependencies": {
     "react": "^19.2.8",

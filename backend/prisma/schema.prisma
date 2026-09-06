@@ -29,6 +29,8 @@ model User {
   habitCompletions HabitCompletion[]
   /// Cascade-deleted when the user is removed.
   passwordResetTokens PasswordResetToken[]
+  /// Challenge records owned by this user. Cascade-deleted with the user.
+  challenges Challenge[]
 }
 
 /// A recurring habit owned by a User (PRD section 7).
@@ -50,6 +52,8 @@ model Habit {
 
   /// Daily completion/miss records for this habit. Cascade-deleted with the habit.
   completions HabitCompletion[]
+  /// Challenge links for this habit. Restrict prevents habit deletion while linked.
+  challengeLinks ChallengeHabit[]
 
   @@index([userId])
 }
@@ -99,4 +103,47 @@ model PasswordResetToken {
 
   /// Lookups by owner.
   @@index([userId])
+}
+
+/// An off-chain user-owned challenge definition and lifecycle record.
+model Challenge {
+  id           String   @id @default(cuid())
+  userId       String
+  title        String
+  description  String?
+  status       String   @default("DRAFT")
+  startDate    DateTime
+  endDate      DateTime
+  durationDays Int
+  maxMisses    Int      @default(0)
+  committedAt  DateTime?
+  completedAt  DateTime?
+  failedAt     DateTime?
+  failReason   String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  /// Owning user. Deleting the user cascade-deletes their challenges.
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Habit links for this challenge. Cascade-deleted with the challenge.
+  habitLinks ChallengeHabit[]
+
+  @@index([userId, status])
+  @@index([userId, startDate, endDate])
+}
+
+/// Join table linking a challenge to one or more required habits.
+model ChallengeHabit {
+  id          String @id @default(cuid())
+  challengeId String
+  habitId     String
+
+  /// Deleting a challenge cascade-deletes its challenge-habit links.
+  challenge Challenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  /// Habit deletion is restricted while linked from any challenge.
+  habit Habit @relation(fields: [habitId], references: [id], onDelete: Restrict)
+
+  @@unique([challengeId, habitId])
+  @@index([habitId])
 }

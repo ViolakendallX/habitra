@@ -6,6 +6,7 @@ import { analyticsRouter } from './routes/analytics.js';
 import { authRouter } from './routes/auth.js';
 import { devRouter } from './routes/dev.js';
 import { habitsRouter } from './routes/habits.js';
+import { challengesRouter } from './routes/challenges.js';
 import { healthRouter } from './routes/health.js';
 import { passwordResetRouter } from './routes/passwordReset.js';
 
@@ -24,6 +25,7 @@ export function createApp(): Express {
   app.use('/api/auth', authRouter);
   app.use('/api/auth', passwordResetRouter);
   app.use('/api/habits', habitsRouter);
+  app.use('/api/challenges', challengesRouter);
   app.use('/api', analyticsRouter);
   app.use('/api/agent', agentRouter);
 

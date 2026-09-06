@@ -123,6 +123,62 @@ export interface UserAnalytics {
   commonMissReasons: { reason: string; count: number }[];
 }
 
+export type ChallengeStatus = 'DRAFT' | 'ACTIVE' | 'COMPLETED' | 'FAILED' | 'ARCHIVED';
+
+export interface ChallengeLinkedHabit {
+  habitId: string;
+  name: string;
+  status: HabitStatus;
+}
+
+export interface ChallengeProgress {
+  challengeId: string;
+  status: ChallengeStatus;
+  currentStatus: ChallengeStatus;
+  startDate: string;
+  endDate: string;
+  durationDays: number;
+  daysTotal: number;
+  daysElapsed: number;
+  daysCompleted: number;
+  daysMissed: number;
+  daysPending: number;
+  maxMisses: number;
+  remainingMissAllowance: number;
+  completionRate: number;
+  linkedHabit: ChallengeLinkedHabit | null;
+  failureReason: string | null;
+}
+
+export interface Challenge {
+  id: string;
+  userId: string;
+  title: string;
+  description: string | null;
+  status: ChallengeStatus;
+  startDate: string;
+  endDate: string;
+  durationDays: number;
+  maxMisses: number;
+  committedAt: string | null;
+  completedAt: string | null;
+  failedAt: string | null;
+  failReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+  linkedHabit: ChallengeLinkedHabit | null;
+  progress: ChallengeProgress | null;
+}
+
+export interface CreateChallengeInput {
+  title: string;
+  description?: string | null;
+  startDate: string;
+  endDate: string;
+  maxMisses?: number;
+  habitId: string;
+}
+
 /** Success envelope used by the data-returning routes. */
 export interface ApiEnvelope<TData> {
   status: 'success';
@@ -169,6 +225,14 @@ export interface CompletionListResponse {
 
 export interface AnalyticsResponse {
   analytics: UserAnalytics;
+}
+
+export interface ChallengeResponse {
+  challenge: Challenge;
+}
+
+export interface ChallengeListResponse {
+  challenges: Challenge[];
 }
 
 /** Structured recommendation payload returned by GET /api/agent/recommendation. */
