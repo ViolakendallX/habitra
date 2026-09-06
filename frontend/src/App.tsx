@@ -1,5 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 
+import { AuthProvider } from './context/AuthContext';
+import ProtectedRoute from './components/ProtectedRoute';
 import { PLANNED_ROUTES } from './lib/routes';
 
 import Login from './pages/Login';
@@ -16,8 +18,13 @@ import Settings from './pages/Settings';
  * Root application component.
  *
  * React Router is wired here so every planned route (PRD section 4) resolves to
- * a page. Routes marked "not implemented yet" keep their stub components; the
- * auth pages (login, register, forgot-password, reset-password) are functional.
+ * a page. `AuthProvider` sits above the routes and resolves the session once,
+ * via GET /api/auth/me, before anything protected renders.
+ *
+ * Public routes — login, register, forgot-password, reset-password — stay
+ * reachable without a session so the password-reset flow always works. The five
+ * app routes are wrapped in ProtectedRoute, which sends signed-out visitors to
+ * /login.
  *
  * The list below renders the planned routes as informational text inside the
  * shell card so the foundation state is still visible at `/`.
@@ -25,19 +32,56 @@ import Settings from './pages/Settings';
 export default function App() {
   return (
     <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<HomeStub />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
-        <Route path="/forgot-password" element={<ForgotPassword />} />
-        <Route path="/reset-password" element={<ResetPassword />} />
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/habits" element={<Habits />} />
-        <Route path="/challenges" element={<Challenges />} />
-        <Route path="/agent" element={<Agent />} />
-        <Route path="/settings" element={<Settings />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+      <AuthProvider>
+        <Routes>
+          <Route path="/" element={<HomeStub />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/habits"
+            element={
+              <ProtectedRoute>
+                <Habits />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/challenges"
+            element={
+              <ProtectedRoute>
+                <Challenges />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/agent"
+            element={
+              <ProtectedRoute>
+                <Agent />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings"
+            element={
+              <ProtectedRoute>
+                <Settings />
+              </ProtectedRoute>
+            }
+          />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </AuthProvider>
     </BrowserRouter>
   );
 }

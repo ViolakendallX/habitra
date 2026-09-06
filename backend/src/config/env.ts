@@ -11,6 +11,25 @@
  * `src/db/prisma.ts` and `src/auth/jwt.ts`). Never log these values.
  */
 
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// env.ts lives at <backend>/src/config/env.ts. The backend root is two levels up.
+// (When compiled to dist/, the file is at <backend>/dist/config/env.js, which is
+// still two levels up from <backend>, so this resolves identically in dev and prod.)
+const backendRoot = path.resolve(__dirname, '..', '..');
+
+/**
+ * Default Sibyl Python interpreter: the isolated venv created for this project.
+ * Override with SIBYL_PYTHON if your environment differs.
+ */
+function defaultSibylPython(): string {
+  return process.platform === 'win32'
+    ? path.join(backendRoot, '.venv', 'Scripts', 'python.exe')
+    : path.join(backendRoot, '.venv', 'bin', 'python');
+}
+
 function toPort(value: string | undefined, fallback: number): number {
   if (!value) return fallback;
   const parsed = Number(value);
@@ -44,6 +63,27 @@ export const env = {
   appUrl: process.env.APP_URL ?? 'http://localhost:5173',
   // Lifetime of a password-reset token, in minutes.
   resetTokenTtlMinutes: toInt(process.env.PASSWORD_RESET_TOKEN_TTL_MINUTES, 60),
+  // --- Sibyl Memory (STEP 9 foundation; local-first, SQLite-backed, five-tier) ---
+  // Opt-OUT, not opt-in: Sibyl is ON unless SIBYL_ENABLED is explicitly 'false'.
+  // It was previously `=== 'true'`, which meant an unset variable silently
+  // disabled memory — the backend shipped with memory off and the Agent always
+  // reported "Memory not used". Set SIBYL_ENABLED=false to turn it off.
+  //
+  // When enabled, habit / behavior / preference signals are mirrored into a local
+  // Sibyl store keyed by the authenticated user's id (tenant isolation via the
+  // SDK). Every memory call is failure-safe: a missing interpreter, a timeout or
+  // an SDK error is logged and swallowed, never propagated to the request.
+  sibylEnabled: process.env.SIBYL_ENABLED !== 'false',
+  // Local SQLite database path for Sibyl. Defaults to backend/.data/sibyl-memory.db.
+  sibylDbPath:
+    process.env.SIBYL_DB_PATH ??
+    path.resolve(backendRoot, '.data', 'sibyl-memory.db'),
+  // Python interpreter that has sibyl-memory-client installed (the isolated venv).
+  sibylPython: process.env.SIBYL_PYTHON ?? defaultSibylPython(),
+  // Path to the Python bridge script. Defaults to backend/scripts/sibyl_bridge.py.
+  sibylBridgeScript:
+    process.env.SIBYL_BRIDGE_SCRIPT ??
+    path.resolve(backendRoot, 'scripts', 'sibyl_bridge.py'),
 } as const;
 
 export const isProduction = env.nodeEnv === 'production';

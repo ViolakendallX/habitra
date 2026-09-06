@@ -12,7 +12,12 @@
     "start": "node --env-file-if-exists=.env dist/index.js",
     "typecheck": "tsc --noEmit",
     "prisma:generate": "prisma generate",
-    "prisma:validate": "prisma validate"
+    "prisma:validate": "prisma validate",
+    "test:sibyl": "tsx scripts/sibyl_memory_test.ts",
+    "test:habit_memory": "node --env-file-if-exists=.env node_modules/tsx/dist/cli.mjs scripts/habit_memory_test.ts",
+    "test:agent": "node --env-file-if-exists=.env node_modules/tsx/dist/cli.mjs scripts/agent_test.ts",
+    "test:regression_api": "node --env-file-if-exists=.env node_modules/tsx/dist/cli.mjs scripts/regression_api_test.ts",
+    "smoke:agent": "node --env-file-if-exists=.env node_modules/tsx/dist/cli.mjs scripts/agent_smoke.ts"
   },
   "dependencies": {
     "@google/genai": "^2.21.0",

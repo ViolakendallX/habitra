@@ -171,3 +171,274 @@ body {
   border: 1px solid #bbf7d0;
   color: #166534;
 }
+
+/*
+ * Habits page styles. Reuses the same CSS variables and .shell/.card/.form
+ * building blocks as the auth pages.
+ */
+
+.habits__user {
+  margin: 0 0 16px;
+  font-size: 0.875rem;
+  color: var(--habitra-muted);
+}
+
+.habits__muted {
+  margin: 8px 0;
+  font-size: 0.875rem;
+  color: var(--habitra-muted);
+}
+
+.habits__section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.habits__section-head .card__title {
+  margin: 0;
+}
+
+.habits__form-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.habits__error {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.habits__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.habit {
+  border: 1px solid var(--habitra-border);
+  border-radius: 10px;
+  padding: 16px;
+}
+
+.habit__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.habit__name {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.habit__frequency {
+  font-size: 0.8125rem;
+  color: var(--habitra-muted);
+}
+
+.habit__description {
+  margin: 8px 0 0;
+  font-size: 0.9375rem;
+}
+
+.habit__meta {
+  margin: 4px 0 0;
+  font-size: 0.8125rem;
+  color: var(--habitra-muted);
+}
+
+.habit__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.habit__miss {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--habitra-border);
+}
+
+.habit__miss-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.habit__miss-row .form__input {
+  flex: 1 1 200px;
+}
+
+.habit__history {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--habitra-border);
+}
+
+.history__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.history__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.875rem;
+}
+
+.history__date {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: var(--habitra-text);
+}
+
+.history__reason {
+  color: var(--habitra-muted);
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  border: 1px solid var(--habitra-border);
+}
+
+.badge--ok {
+  background-color: #f0fdf4;
+  border-color: #bbf7d0;
+  color: #166534;
+}
+
+.badge--miss {
+  background-color: #fef2f2;
+  border-color: #fecaca;
+  color: #991b1b;
+}
+
+.btn {
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--habitra-border);
+  background-color: var(--habitra-surface);
+  color: var(--habitra-text);
+  font-size: 0.875rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background-color 0.15s ease, opacity 0.15s ease;
+}
+
+.btn:hover:not(:disabled) {
+  background-color: #faf9f6;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn--primary {
+  background-color: var(--habitra-accent);
+  border-color: var(--habitra-accent);
+  color: #fff;
+}
+
+.btn--primary:hover:not(:disabled) {
+  background-color: var(--habitra-accent);
+  opacity: 0.9;
+}
+
+.btn--danger {
+  border-color: #fecaca;
+  color: #991b1b;
+}
+
+.btn--ghost {
+  color: var(--habitra-muted);
+}
+
+/* Agent page */
+.agent-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.agent-card__controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.agent-card__loading {
+  margin: 0;
+  color: var(--habitra-muted);
+  font-size: 0.875rem;
+}
+
+.agent-card__error {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.agent-result {
+  border-top: 1px solid var(--habitra-border);
+  padding-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.agent-result__row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.agent-result__label {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--habitra-muted);
+}
+
+.agent-result__text {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.agent-result__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.agent-result__memory-note {
+  font-size: 0.84rem;
+  color: var(--habitra-muted);
+}
+
+.agent-result__time {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--habitra-muted);
+}

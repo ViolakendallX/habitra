@@ -6,3 +6,8 @@ dist/
 *.log
 
 /src/generated/prisma
+
+# Sibyl Memory isolated Python environment (do not commit)
+.venv/
+# Local Sibyl SQLite database (gitignored; regenerated locally)
+.data/

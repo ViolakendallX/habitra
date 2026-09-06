@@ -1,6 +1,7 @@
 import express, { type Express, type Request, type Response } from 'express';
 
 import { isProduction } from './config/env.js';
+import { agentRouter } from './routes/agent.js';
 import { analyticsRouter } from './routes/analytics.js';
 import { authRouter } from './routes/auth.js';
 import { devRouter } from './routes/dev.js';
@@ -24,6 +25,7 @@ export function createApp(): Express {
   app.use('/api/auth', passwordResetRouter);
   app.use('/api/habits', habitsRouter);
   app.use('/api', analyticsRouter);
+  app.use('/api/agent', agentRouter);
 
   // Dev-only routes (password-reset test capture, etc.). Never mounted in prod.
   if (!isProduction) {
