@@ -2,8 +2,13 @@
  * Central environment configuration.
  *
  * Values are read once at startup so the rest of the app never touches
- * process.env directly. DATABASE_URL configures Prisma/PostgreSQL and JWT_SECRET
- * signs and verifies the HttpOnly authentication cookie.
+ * process.env directly. DATABASE_URL configures Prisma/PostgreSQL, JWT_SECRET
+ * signs and verifies the HttpOnly authentication cookie, and GEMINI_API_KEY
+ * authenticates the Google Gemini API.
+ *
+ * Secrets are stored as-is and default to an empty string when absent; callers
+ * that require a value check it and throw a descriptive error (see
+ * `src/db/prisma.ts` and `src/auth/jwt.ts`). Never log these values.
  */
 
 function toPort(value: string | undefined, fallback: number): number {
@@ -19,6 +24,7 @@ export const env = {
   port: toPort(process.env.PORT, 4000),
   databaseUrl: process.env.DATABASE_URL ?? '',
   jwtSecret: process.env.JWT_SECRET ?? '',
+  geminiApiKey: process.env.GEMINI_API_KEY ?? '',
 } as const;
 
 export const isProduction = env.nodeEnv === 'production';
