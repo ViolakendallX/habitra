@@ -1,0 +1,5 @@
+# WorkBuddy AI tooling memory — never commit
+.workbuddy-ai/
+
+# Temporary backend test scripts
+backend/.tmp_*

@@ -1,4 +1,3 @@
-import * as bcrypt from 'bcrypt';
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 
@@ -9,6 +8,8 @@ import {
   buildCookieOptions,
   signAuthToken,
 } from '../auth/jwt.js';
+import { hashPassword, verifyPassword } from '../auth/password.js';
+import { normalizeEmail, passwordSchema, readString } from '../auth/validation.js';
 import { requireAuth } from '../middleware/auth.js';
 import { publicUserFields } from '../auth/select.js';
 
@@ -23,7 +24,6 @@ import { publicUserFields } from '../auth/select.js';
  * bcrypt cost factor. 12 rounds is the current OWASP recommendation; raise it
  * if the hosting hardware gets faster.
  */
-const SALT_ROUNDS = 12;
 
 const registrationSchema = z.object({
   name: z
@@ -33,11 +33,7 @@ const registrationSchema = z.object({
   email: z
     .email('Enter a valid email address.')
     .max(255, 'Email must be 255 characters or fewer.'),
-  password: z
-    .string()
-    .min(8, 'Password must be at least 8 characters.')
-    // bcrypt only uses the first 72 bytes, so longer passwords add no security.
-    .max(72, 'Password must be 72 characters or fewer.'),
+  password: passwordSchema,
 });
 
 const loginSchema = z.object({
@@ -60,19 +56,6 @@ type LoginInput = {
   email?: unknown;
   password?: unknown;
 };
-
-function readString(value: unknown): string | undefined {
-  return typeof value === 'string' ? value : undefined;
-}
-
-/**
- * Trims whitespace and lowercases an email. Shared by registration and login
- * so the same address always resolves to the same account
- * (e.g. "  Ada@Example.COM " and "ada@example.com" are identical).
- */
-function normalizeEmail(value: unknown): string | undefined {
-  return readString(value)?.trim().toLowerCase();
-}
 
 /**
  * Normalizes registration input before validation.
@@ -130,7 +113,7 @@ authRouter.post('/register', async (req: Request, res: Response) => {
     return;
   }
 
-  const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
+  const passwordHash = await hashPassword(password);
 
   try {
     const user = await prisma.user.create({
@@ -188,7 +171,7 @@ authRouter.post('/login', async (req: Request, res: Response) => {
     return;
   }
 
-  const passwordMatches = await bcrypt.compare(password, user.passwordHash);
+  const passwordMatches = await verifyPassword(password, user.passwordHash);
 
   if (!passwordMatches) {
     res.status(401).json({ status: 'error', message: 'Invalid email or password.' });

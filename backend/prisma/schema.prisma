@@ -27,6 +27,8 @@ model User {
   habits Habit[]
   /// Cascade-deleted when the user is removed.
   habitCompletions HabitCompletion[]
+  /// Cascade-deleted when the user is removed.
+  passwordResetTokens PasswordResetToken[]
 }
 
 /// A recurring habit owned by a User (PRD section 7).
@@ -78,4 +80,23 @@ model HabitCompletion {
   @@index([userId, date])
   /// At most one record per habit per calendar date.
   @@unique([habitId, date])
+}
+
+/// A single-use, expiring password-reset token (PRD password-reset flow).
+/// Only the SHA-256 hash of the raw token is stored; the raw token is emailed
+/// to the user and never persisted. Tokens are deleted after use (single-use),
+/// and a new forgot-password request deletes any prior unused tokens for the
+/// user, so only the latest link is ever valid.
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  /// Owning user. Deleting the user cascade-deletes their reset tokens.
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Lookups by owner.
+  @@index([userId])
 }

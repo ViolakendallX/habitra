@@ -63,3 +63,111 @@ body {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.875rem;
 }
+
+/*
+ * Form styles for auth pages (login, register, forgot-password, reset-password).
+ * Reuses the existing CSS variables and .shell/.card layout.
+ */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.form__group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.form__label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--habitra-text);
+}
+
+.form__input {
+  padding: 10px 12px;
+  border: 1px solid var(--habitra-border);
+  border-radius: 8px;
+  font-size: 0.9375rem;
+  font-family: inherit;
+  color: var(--habitra-text);
+  background-color: var(--habitra-surface);
+  transition: border-color 0.15s ease;
+}
+
+.form__input:focus {
+  outline: none;
+  border-color: var(--habitra-accent);
+}
+
+.form__input--error {
+  border-color: var(--habitra-danger, #dc2626);
+}
+
+.form__hint {
+  font-size: 0.8125rem;
+  color: var(--habitra-muted);
+}
+
+.form__error-text {
+  font-size: 0.8125rem;
+  color: var(--habitra-danger, #dc2626);
+}
+
+.form__btn {
+  padding: 10px 16px;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background-color 0.15s ease, opacity 0.15s ease;
+  background-color: var(--habitra-accent);
+  color: #fff;
+}
+
+.form__btn:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.form__btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.form__link {
+  color: var(--habitra-accent);
+  text-decoration: none;
+  font-size: 0.875rem;
+}
+
+.form__link:hover {
+  text-decoration: underline;
+}
+
+.form__footer {
+  margin-top: 4px;
+  text-align: center;
+}
+
+.alert {
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 0.875rem;
+}
+
+.alert--error {
+  background-color: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+}
+
+.alert--success {
+  background-color: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #166534;
+}

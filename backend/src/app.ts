@@ -1,9 +1,12 @@
 import express, { type Express, type Request, type Response } from 'express';
 
+import { isProduction } from './config/env.js';
 import { analyticsRouter } from './routes/analytics.js';
 import { authRouter } from './routes/auth.js';
+import { devRouter } from './routes/dev.js';
 import { habitsRouter } from './routes/habits.js';
 import { healthRouter } from './routes/health.js';
+import { passwordResetRouter } from './routes/passwordReset.js';
 
 /**
  * Builds the Express application.
@@ -18,8 +21,14 @@ export function createApp(): Express {
 
   app.use(healthRouter);
   app.use('/api/auth', authRouter);
+  app.use('/api/auth', passwordResetRouter);
   app.use('/api/habits', habitsRouter);
   app.use('/api', analyticsRouter);
+
+  // Dev-only routes (password-reset test capture, etc.). Never mounted in prod.
+  if (!isProduction) {
+    app.use('/api/dev', devRouter);
+  }
 
   app.use((_req: Request, res: Response) => {
     res.status(404).json({ status: 'error', message: 'Route not found' });

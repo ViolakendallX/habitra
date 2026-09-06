@@ -2,6 +2,8 @@
 export const PLANNED_ROUTES = [
   '/login',
   '/register',
+  '/forgot-password',
+  '/reset-password',
   '/dashboard',
   '/habits',
   '/challenges',
