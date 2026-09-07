@@ -360,6 +360,180 @@ async function main(): Promise<void> {
     check('Sibyl write attempted even when non-blocking', sibylSaveCalls === 1, `saveCalls=${sibylSaveCalls}`);
 
     check('agent context lookup uses 30-day window helper (sanity)', fromDate.toISOString().startsWith('2026-08-07'));
+
+    // ---------------- 7C-2: intervention decision surface ----------------
+    // Gemini is the ONLY decision-maker. The service must faithfully surface
+    // whatever Gemini decided and must never invent a decision of its own.
+    const analyticsA = {
+      dateRange: { from: '2026-08-07', to: '2026-09-06' },
+      overall: { completionRate: 100, currentStreak: 1, bestStreak: 1, totalCompleted: 1, totalMissed: 0, totalTracked: 1 },
+      habits: [{ habitId: 'habit-a-1', name: 'Morning run', completionRate: 100, currentStreak: 1, bestStreak: 1, totalCompleted: 1, totalMissed: 0, totalTracked: 1 }],
+      mostConsistentHabit: { habitId: 'habit-a-1', name: 'Morning run', completionRate: 100, currentStreak: 1, bestStreak: 1, totalCompleted: 1, totalMissed: 0, totalTracked: 1 },
+      leastConsistentHabit: { habitId: 'habit-a-1', name: 'Morning run', completionRate: 100, currentStreak: 1, bestStreak: 1, totalCompleted: 1, totalMissed: 0, totalTracked: 1 },
+      commonMissReasons: [],
+    };
+
+    const buildInterventionService = (modelJson: string) => {
+      const captured = { prompt: '' };
+      const service = createAccountabilityAgentService({
+        loadActiveHabits: async () => habitsByUser[userA.id],
+        loadRecentCompletions: async () => completionsByUser[userA.id],
+        computeAnalytics: async () => analyticsA,
+        searchMemories: async () => ({ ok: true, remembered: true, items: [] }),
+        generateModelResponse: async ({ prompt }) => {
+          captured.prompt = prompt;
+          return modelJson;
+        },
+        saveRecommendationOutcome: async () => ({ ok: true, remembered: true }),
+        now: () => nowDate,
+        randomId: () => 'intervention-id',
+      });
+      return { service, captured };
+    };
+
+    const baseReply = {
+      message: 'Keep going.',
+      recommendation: 'Do your easiest habit first.',
+      reason: 'It lowers startup friction.',
+      memoryUsed: false,
+    };
+
+    // A model reply that predates interventions (or simply omits the field)
+    // must still validate — the recommendation path cannot break.
+    const omitted = buildInterventionService(JSON.stringify(baseReply));
+    const omittedResult = await omitted.service.generateRecommendation(userA.id);
+    check(
+      'intervention defaults to null when Gemini omits it',
+      omittedResult.intervention === null,
+      `intervention=${JSON.stringify(omittedResult.intervention)}`,
+    );
+    check(
+      'recommendation still succeeds when intervention is omitted',
+      typeof omittedResult.recommendation === 'string' && typeof omittedResult.message === 'string',
+    );
+
+    const explicitNull = buildInterventionService(JSON.stringify({ ...baseReply, intervention: null }));
+    const explicitNullResult = await explicitNull.service.generateRecommendation(userA.id);
+    check(
+      'intervention stays null when Gemini explicitly returns null',
+      explicitNullResult.intervention === null,
+    );
+
+    const needed = buildInterventionService(JSON.stringify({
+      ...baseReply,
+      intervention: { needed: true, kind: 'commitment_check', reason: 'Two missed sessions in a row.' },
+    }));
+    const neededResult = await needed.service.generateRecommendation(userA.id);
+    check(
+      'Gemini intervention decision is surfaced verbatim (needed=true)',
+      neededResult.intervention?.needed === true
+        && neededResult.intervention?.kind === 'commitment_check'
+        && neededResult.intervention?.reason === 'Two missed sessions in a row.',
+      `intervention=${JSON.stringify(neededResult.intervention)}`,
+    );
+
+    const notNeeded = buildInterventionService(JSON.stringify({
+      ...baseReply,
+      intervention: { needed: false, kind: 'nudge', reason: 'User is on track.' },
+    }));
+    const notNeededResult = await notNeeded.service.generateRecommendation(userA.id);
+    check(
+      'needed=false is preserved, not silently dropped',
+      notNeededResult.intervention?.needed === false && notNeededResult.intervention?.kind === 'nudge',
+      `intervention=${JSON.stringify(notNeededResult.intervention)}`,
+    );
+
+    check(
+      'intervention criteria live in the Gemini prompt, not in code',
+      /INTERVENTION RULES/.test(omitted.captured.prompt)
+        && /"intervention"/.test(omitted.captured.prompt)
+        && /commitment_check/.test(omitted.captured.prompt),
+    );
+
+    const badKind = buildInterventionService(JSON.stringify({
+      ...baseReply,
+      intervention: { needed: true, kind: 'shout', reason: 'Unknown kind.' },
+    }));
+    let badKindCode: string | null = null;
+    try {
+      await badKind.service.generateRecommendation(userA.id);
+    } catch (err) {
+      if (err instanceof AgentServiceError) badKindCode = err.code;
+    }
+    check(
+      'unknown intervention kind is rejected as malformed output',
+      badKindCode === 'MALFORMED_MODEL_OUTPUT',
+      `code=${badKindCode}`,
+    );
+
+    // ---------------- 7C-5: agent dispatches to the intervention executor ----------------
+    // Gemini is the only decision-maker. The agent must call requestIntervention
+    // exactly when needed, with the right fields, and must not break if it throws.
+    const baseReply5 = {
+      message: 'Keep going — small steps rebuild momentum.',
+      recommendation: 'Do one easy habit today.',
+      reason: 'You have momentum on this habit.',
+      memoryUsed: false,
+    };
+
+    const makeAgent = (modelJson: string, requestIntervention?: (r: any) => Promise<any>) => {
+      const calls: any[] = [];
+      return {
+        calls,
+        service: createAccountabilityAgentService({
+          loadActiveHabits: async () => habitsByUser[userA.id],
+          loadRecentCompletions: async () => completionsByUser[userA.id],
+          computeAnalytics: async () => analyticsA,
+          searchMemories: async () => ({ ok: true, remembered: true, items: [] }),
+          generateModelResponse: async () => modelJson,
+          saveRecommendationOutcome: async () => ({ ok: true, remembered: true }),
+          now: () => nowDate,
+          randomId: () => 'agent-int-id',
+          requestIntervention: requestIntervention
+            ?? (async (r: any) => {
+              calls.push(r);
+              return { ok: true, interventionId: r.interventionId, status: 'CREATED', provider: 'mock' } as any;
+            }),
+        }),
+      };
+    };
+
+    const neededReply = JSON.stringify({
+      ...baseReply5,
+      intervention: { needed: true, kind: 'nudge', reason: 'Three misses this week.' },
+    });
+    const agNeed = makeAgent(neededReply);
+    await agNeed.service.generateRecommendation(userA.id);
+    check('agent calls requestIntervention when Gemini says needed', agNeed.calls.length === 1, `calls=${agNeed.calls.length}`);
+    const ireq = agNeed.calls[0];
+    check('intervention is requested for the authenticated user only', ireq?.userId === userA.id, `userId=${ireq?.userId}`);
+    check('requested kind matches the Gemini decision', ireq?.kind === 'nudge', `kind=${ireq?.kind}`);
+    check('request goal is the Gemini recommendation', ireq?.goal === 'Do one easy habit today.', `goal=${ireq?.goal}`);
+    check('request message is the Gemini message', ireq?.message === 'Keep going — small steps rebuild momentum.', `message=${ireq?.message}`);
+    check('request reason matches the intervention reason', ireq?.reason === 'Three misses this week.', `reason=${ireq?.reason}`);
+    check('interventionId is generated, not client-supplied', ireq?.interventionId === 'agent-int-id', `id=${ireq?.interventionId}`);
+
+    const nullReply = JSON.stringify({ ...baseReply5 });
+    const agNull = makeAgent(nullReply);
+    await agNull.service.generateRecommendation(userA.id);
+    check('agent does NOT call requestIntervention when Gemini omits it', agNull.calls.length === 0, `calls=${agNull.calls.length}`);
+
+    const notNeededReply = JSON.stringify({ ...baseReply5, intervention: { needed: false, kind: 'nudge', reason: 'On track.' } });
+    const agNot = makeAgent(notNeededReply);
+    await agNot.service.generateRecommendation(userA.id);
+    check('agent does NOT call requestIntervention when needed is false', agNot.calls.length === 0, `calls=${agNot.calls.length}`);
+
+    // Resilience: a failing executor must not break the recommendation response.
+    const agThrow = makeAgent(neededReply, async () => { throw new Error('executor down'); });
+    let threwRecommendation = false;
+    let recOk = false;
+    try {
+      const r = await agThrow.service.generateRecommendation(userA.id);
+      recOk = typeof r.recommendation === 'string' && r.intervention?.needed === true;
+    } catch {
+      threwRecommendation = true;
+    }
+    check('recommendation still returns when the executor fails', !threwRecommendation && recOk, `threw=${threwRecommendation} recOk=${recOk}`);
   } finally {
     if (createdUserIds.length > 0) {
       await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });

@@ -19,18 +19,24 @@
     "test:regression_api": "node --env-file-if-exists=.env node_modules/tsx/dist/cli.mjs scripts/regression_api_test.ts",
     "test:challenges_service": "node --env-file-if-exists=.env node_modules/tsx/dist/cli.mjs scripts/challenges_service_test.ts",
     "test:challenges_api": "node --env-file-if-exists=.env node_modules/tsx/dist/cli.mjs scripts/challenges_api_test.ts",
-    "smoke:agent": "node --env-file-if-exists=.env node_modules/tsx/dist/cli.mjs scripts/agent_smoke.ts"
+    "test:virtuals_intervention": "node --env-file-if-exists=.env node_modules/tsx/dist/cli.mjs scripts/virtuals_intervention_test.ts",
+    "test:virtuals_acp_v2": "node --env-file-if-exists=.env node_modules/tsx/dist/cli.mjs scripts/virtuals_acp_v2_adapter_test.ts",
+    "smoke:agent": "node --env-file-if-exists=.env node_modules/tsx/dist/cli.mjs scripts/agent_smoke.ts",
+    "test:virtuals_provider": "node --env-file-if-exists=.env node_modules/tsx/dist/cli.mjs scripts/virtuals_provider_test.ts"
   },
   "dependencies": {
+    "@account-kit/infra": "^4.88.5",
     "@google/genai": "^2.21.0",
     "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "^7.10.0",
     "@types/jsonwebtoken": "^9.0.10",
+    "@virtuals-protocol/acp-node-v2": "^0.1.12",
     "bcrypt": "^6.0.0",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
     "nodemailer": "^10.0.0",
     "pg": "^8.23.0",
+    "viem": "^2.56.3",
     "zod": "^4.5.4"
   },
   "devDependencies": {
