@@ -3,3 +3,6 @@
 
 # Temporary backend test scripts
 backend/.tmp_*
+
+# Local environment / secrets — never commit
+backend/.env

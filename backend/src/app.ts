@@ -3,6 +3,8 @@ import express, { type Express, type Request, type Response } from 'express';
 import { isProduction } from './config/env.js';
 import { agentRouter } from './routes/agent.js';
 import { analyticsRouter } from './routes/analytics.js';
+import { walletRouter } from './routes/wallet.js';
+import { blockchainRouter } from './routes/blockchain.js';
 import { authRouter } from './routes/auth.js';
 import { devRouter } from './routes/dev.js';
 import { habitsRouter } from './routes/habits.js';
@@ -28,6 +30,8 @@ export function createApp(): Express {
   app.use('/api/challenges', challengesRouter);
   app.use('/api', analyticsRouter);
   app.use('/api/agent', agentRouter);
+  app.use('/api/wallet', walletRouter);
+  app.use('/api/blockchain', blockchainRouter);
 
   // Dev-only routes (password-reset test capture, etc.). Never mounted in prod.
   if (!isProduction) {

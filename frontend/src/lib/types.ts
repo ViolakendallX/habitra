@@ -247,3 +247,45 @@ export interface AgentRecommendation {
 export interface AgentRecommendationResponse {
   recommendation: AgentRecommendation;
 }
+
+/**
+ * Backend `blockchainPersistence` WalletRecord.
+ *
+ * Only a *public* address is ever stored or returned — the Prisma Wallet model
+ * has no private-key/seed/secret field, and neither does this type.
+ */
+export interface Wallet {
+  id: string;
+  userId: string;
+  address: string;
+  chainId: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Payload of GET /api/wallet. `wallet` is null when nothing is connected. */
+export interface WalletResponse {
+  wallet: Wallet | null;
+}
+
+/** Body for POST /api/wallet. chainId defaults to Base Sepolia (84532). */
+export interface ConnectWalletInput {
+  address: string;
+  chainId?: number;
+}
+
+/**
+ * Data of GET /api/blockchain/status — public configuration only, never
+ * secrets. `defaultChainId`/`supportedChainIds` come from the route; the rest
+ * from the backend's getBlockchainStatus().
+ */
+export interface BlockchainStatus {
+  mode: 'demo' | 'live' | 'unconfigured';
+  chainId: number;
+  rpcUrl: string | null;
+  beesTokenAddress: string | null;
+  challengeContractAddress: string | null;
+  note: string;
+  defaultChainId: number;
+  supportedChainIds: number[];
+}

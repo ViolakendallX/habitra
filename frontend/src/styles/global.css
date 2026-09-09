@@ -529,3 +529,152 @@ body {
   grid-template-columns: 1fr 1fr;
   gap: 8px 16px;
 }
+
+/* Wallet page */
+.wallet__detail {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  align-items: baseline;
+  margin-bottom: 8px;
+}
+
+.wallet__label {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--habitra-muted);
+}
+
+.wallet__value {
+  margin: 0;
+  font-size: 0.9375rem;
+}
+
+.wallet__address {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.875rem;
+  word-break: break-all;
+}
+
+.wallet__mode {
+  margin: 0 0 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.875rem;
+  color: var(--habitra-muted);
+}
+
+.wallet__grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px 16px;
+}
+
+.wallet__grid p {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+@media (min-width: 560px) {
+  .wallet__grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+/*
+ * Shared top navigation for authenticated (protected) pages. Mounted once per
+ * protected screen via AppLayout; never shown on the public auth pages.
+ * Reuses the same CSS variables and BEM naming as the rest of the app.
+ */
+.navbar {
+  background-color: var(--habitra-surface);
+  border-bottom: 1px solid var(--habitra-border);
+}
+
+.navbar__inner {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 10px 24px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.navbar__brand {
+  font-size: 1.0625rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--habitra-text);
+  text-decoration: none;
+}
+
+.navbar__links {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+}
+
+.navbar__link {
+  display: inline-block;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  color: var(--habitra-muted);
+  text-decoration: none;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.navbar__link:hover {
+  background-color: #faf9f6;
+  color: var(--habitra-text);
+}
+
+.navbar__link--active {
+  color: var(--habitra-accent);
+  background-color: #fef2ec;
+}
+
+.navbar__account {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.navbar__user {
+  font-size: 0.8125rem;
+  color: var(--habitra-muted);
+}
+
+.navbar__logout {
+  margin: 0;
+}
+
+/* Stack the bar on narrow screens so links stay reachable. */
+@media (max-width: 560px) {
+  .navbar__inner {
+    padding: 8px 16px;
+    gap: 8px;
+  }
+
+  .navbar__brand {
+    width: 100%;
+  }
+
+  .navbar__links {
+    order: 3;
+    width: 100%;
+  }
+
+  .navbar__account {
+    margin-left: auto;
+  }
+}

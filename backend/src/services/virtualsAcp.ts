@@ -64,6 +64,15 @@ export interface AcpSdk {
   AcpAgent: AcpSdkModule['AcpAgent'];
   PrivyAlchemyEvmProviderAdapter: AcpSdkModule['PrivyAlchemyEvmProviderAdapter'];
   AssetToken: AcpSdkModule['AssetToken'];
+  /** Optional: only present on the real SDK. Lets us build a transport/api that
+   *  point at the testnet server when running on Base Sepolia. They are optional
+   *  so the test fakes do not have to supply them. */
+  AcpApiClient?: AcpSdkModule['AcpApiClient'];
+  SseTransport?: AcpSdkModule['SseTransport'];
+  ACP_SERVER_URL?: string;
+  ACP_TESTNET_SERVER_URL?: string;
+  PRIVY_APP_ID?: string;
+  TESTNET_PRIVY_APP_ID?: string;
 }
 
 export type LoadAcpSdk = () => Promise<AcpSdk>;
@@ -77,6 +86,14 @@ export async function loadAcpSdk(): Promise<AcpSdk> {
       AcpAgent: mod.AcpAgent,
       PrivyAlchemyEvmProviderAdapter: mod.PrivyAlchemyEvmProviderAdapter,
       AssetToken: mod.AssetToken,
+      // Endpoints / app ids are pulled lazily so the SDK stays opt-in and these
+      // constants never force an eager top-level import of the package.
+      AcpApiClient: mod.AcpApiClient,
+      SseTransport: mod.SseTransport,
+      ACP_SERVER_URL: mod.ACP_SERVER_URL,
+      ACP_TESTNET_SERVER_URL: mod.ACP_TESTNET_SERVER_URL,
+      PRIVY_APP_ID: mod.PRIVY_APP_ID,
+      TESTNET_PRIVY_APP_ID: mod.TESTNET_PRIVY_APP_ID,
     };
   }
   return cachedSdk;
@@ -263,16 +280,42 @@ export type AcpCreateAgent = (
 ) => Promise<AcpAgentLike>;
 
 export const defaultCreateAcpAgent: AcpCreateAgent = async (sdk, credentials, config) => {
+  // The SDK defaults every network target to the Virtuals MAINNET server/app id.
+  // Base Sepolia is the Virtuals TESTNET environment, which has its own server
+  // URL and Privy app id. Routing a testnet wallet at the mainnet endpoint makes
+  // the very first call (the sign-message RPC during agent auth) return HTTP 500
+  // because that wallet is unknown to the mainnet signing service.
+  const isTestnet = config.chain === 'baseSepolia';
+  const serverUrl = isTestnet
+    ? (sdk.ACP_TESTNET_SERVER_URL ?? 'https://api-dev.acp.virtuals.io')
+    : (sdk.ACP_SERVER_URL ?? 'https://api.acp.virtuals.io');
+  const privyAppId = isTestnet
+    ? (sdk.TESTNET_PRIVY_APP_ID ?? 'clsakj3e205soyepnl23x2itv')
+    : (sdk.PRIVY_APP_ID ?? 'cltsev9j90f67yhyw4sngtrpv');
+
   const evmProvider = await sdk.PrivyAlchemyEvmProviderAdapter.create({
     // Explicit: the adapter defaults to Base MAINNET. Never rely on that here.
     chains: [config.chain === 'base' ? base : baseSepolia],
     walletAddress: credentials.walletAddress as Address,
     walletId: credentials.walletId,
     signerPrivateKey: credentials.signerPrivateKey,
+    // Point the provider adapter at the correct environment.
+    serverUrl,
+    privyAppId,
     ...(config.builderCode ? { builderCode: config.builderCode } : {}),
   });
 
-  return sdk.AcpAgent.create({ evmProvider });
+  // AcpAgent.create builds its own SSE transport + API client from defaults
+  // (mainnet), so we must hand it instances bound to the same `serverUrl`;
+  // otherwise the provider signs against testnet but the stream/auth hit mainnet.
+  const transport = sdk.SseTransport ? new sdk.SseTransport({ serverUrl }) : undefined;
+  const api = sdk.AcpApiClient ? new sdk.AcpApiClient({ serverUrl }) : undefined;
+
+  return sdk.AcpAgent.create({
+    evmProvider,
+    ...(transport ? { transport } : {}),
+    ...(api ? { api } : {}),
+  });
 };
 
 export interface AcpAgentFactoryDeps {

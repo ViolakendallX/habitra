@@ -31,6 +31,10 @@ model User {
   passwordResetTokens PasswordResetToken[]
   /// Challenge records owned by this user. Cascade-deleted with the user.
   challenges Challenge[]
+  /// Connected wallets. Cascade-deleted with the user.
+  wallets Wallet[]
+  /// On-chain / demo transactions. Cascade-deleted with the user.
+  transactions Transaction[]
 }
 
 /// A recurring habit owned by a User (PRD section 7).
@@ -146,4 +150,71 @@ model ChallengeHabit {
 
   @@unique([challengeId, habitId])
   @@index([habitId])
+}
+
+/// A blockchain wallet a user has connected (PRD §22). Only the public address is
+/// stored — private keys, seed phrases, and wallet passwords are NEVER persisted
+/// (PRD §22, §30). A (address, chainId) pair is unique, so the same EVM address
+/// cannot be registered twice on the same chain for the same or a different user.
+model Wallet {
+  id        String   @id @default(cuid())
+  userId    String
+  /// Public EVM address (0x...). Stored only; never any secret material.
+  address   String
+  /// EVM chain id this wallet is associated with. Defaults to Base Sepolia (84532).
+  chainId   Int      @default(84532)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// Owning user. Deleting the user cascade-deletes their wallets.
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Transactions signed/owned by this wallet. Cascade-deleted with the wallet.
+  transactions Transaction[]
+
+  /// Lookups by owner.
+  @@index([userId])
+  /// One wallet record per (address, chain): an EVM address is unique per chain.
+  @@unique([address, chainId])
+}
+
+/// An on-chain (or demo-mode) transaction tied to a user's wallet and, where
+/// applicable, a challenge (PRD §19, §21). `type` and `status` are plain strings
+/// (type = FUND | CLAIM | PENALTY; status = PENDING | CONFIRMED | FAILED), kept as
+/// String like the other enum-like columns in this schema. Amount is in token base
+/// units as a BigInt to avoid precision loss.
+model Transaction {
+  id           String   @id @default(cuid())
+  userId       String
+  walletId     String
+  /// Optional link to the challenge this transaction funds or rewards. Plain id
+  /// reference (no FK yet) to avoid coupling the schema to the off-chain Challenge
+  /// model until the reward flow is implemented.
+  challengeId  String?
+  /// FUND (challenge funding/commitment) | CLAIM (reward claim) | PENALTY.
+  type         String
+  /// PENDING | CONFIRMED | FAILED.
+  status       String   @default("PENDING")
+  /// On-chain transaction hash, once broadcast. Nullable for pre-broadcast /
+  /// demo-mode records. Indexed for lookups; not globally unique because demo or
+  /// retried records may carry placeholder/duplicate values.
+  txHash       String?
+  /// EVM chain id the transaction targets. Defaults to Base Sepolia (84532).
+  chainId      Int      @default(84532)
+  /// Token amount in base units (BigInt). Nullable for non-amount transactions.
+  amount       BigInt?
+  /// ERC-20 token address the amount refers to (e.g. BEES). Nullable.
+  tokenAddress String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  /// Owning user. Deleting the user cascade-deletes their transactions.
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Wallet that signed/owns this transaction. Cascade-deleted with the wallet.
+  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([walletId])
+  @@index([challengeId])
+  @@index([txHash])
+  @@index([userId, status])
 }

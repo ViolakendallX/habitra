@@ -84,6 +84,29 @@ export const env = {
   sibylBridgeScript:
     process.env.SIBYL_BRIDGE_SCRIPT ??
     path.resolve(backendRoot, 'scripts', 'sibyl_bridge.py'),
+  // --- Base + BEES (blockchain foundation; see PRD §19–23, §30) ---
+  // Base Sepolia is Habitra's demo/test chain for the BEES token and challenge
+  // rewards. These values feed src/services/blockchain.ts. Never log them.
+  // In development DEMO_CHAIN_MODE defaults to true (PRD §23); set it to 'false'
+  // and provide BASE_RPC_URL to enable real on-chain reads via a viem client.
+  demoChainMode:
+    process.env.DEMO_CHAIN_MODE !== undefined
+      ? process.env.DEMO_CHAIN_MODE === 'true'
+      : (process.env.NODE_ENV ?? 'development') === 'development',
+  // Base Sepolia RPC endpoint. Empty by default so a real client is only built
+  // when the operator explicitly configures one (i.e. is "properly configured").
+  baseRpcUrl: process.env.BASE_RPC_URL ?? '',
+  // Base Sepolia chain id.
+  baseChainId: toInt(process.env.BASE_CHAIN_ID, 84532),
+  // BEES ERC-20 token address on Base Sepolia (set after deployment).
+  beesTokenAddress: process.env.BEES_TOKEN_ADDRESS ?? '',
+  // ChallengeRewards contract address on Base Sepolia (set after deployment).
+  challengeContractAddress: process.env.CHALLENGE_CONTRACT_ADDRESS ?? '',
+  // Resolver/signer key used ONLY to call HabitraChallengeEscrow.settle() when
+  // DEMO_CHAIN_MODE=false. Read from the environment at run time; never written
+  // to disk by this app, never logged, never sent to any client. Empty by
+  // default, which disables on-chain settlement (there is simply no signer).
+  escrowResolverPrivateKey: process.env.ESCROW_RESOLVER_PRIVATE_KEY ?? '',
 } as const;
 
 export const isProduction = env.nodeEnv === 'production';

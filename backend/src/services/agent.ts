@@ -61,6 +61,9 @@ export type AgentRecommendation = z.infer<typeof geminiResponseSchema>;
 
 export interface AgentRecommendationResponse extends AgentRecommendation {
   generatedAt: string;
+  /** Stable id of the recommendation memory (category=recommendation). Lets a
+   *  client later record accept/decline/helpful via the outcome endpoint. */
+  recommendationId: string;
   /** Always present; `null` when Gemini decided no intervention is warranted. */
   intervention: AgentInterventionDecision | null;
 }
@@ -554,9 +557,12 @@ export function createAccountabilityAgentService(overrides: Partial<AgentDepende
         // Gemini may omit the field entirely; callers should never have to
         // distinguish "omitted" from "decided not to intervene".
         intervention: validated.data.intervention ?? null,
+        // Stable id for the recommendation memory, surfaced so a client can later
+        // record the outcome (accept/decline/helpful) against it.
+        recommendationId: deps.randomId(),
       };
 
-      const recommendationId = deps.randomId();
+      const recommendationId = response.recommendationId;
       void deps
         .saveRecommendationOutcome(userId, {
           recommendationId,

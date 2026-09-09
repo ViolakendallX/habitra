@@ -1,8 +1,9 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import type { ReactNode } from 'react';
 
 import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
-import { PLANNED_ROUTES } from './lib/routes';
+import Navigation from './components/Navigation';
 
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -12,6 +13,7 @@ import Dashboard from './pages/Dashboard';
 import Habits from './pages/Habits';
 import Challenges from './pages/Challenges';
 import Agent from './pages/Agent';
+import Wallet from './pages/Wallet';
 import Settings from './pages/Settings';
 
 /**
@@ -26,15 +28,15 @@ import Settings from './pages/Settings';
  * app routes are wrapped in ProtectedRoute, which sends signed-out visitors to
  * /login.
  *
- * The list below renders the planned routes as informational text inside the
- * shell card so the foundation state is still visible at `/`.
+ * The root path `/` sends visitors to `/dashboard`; ProtectedRoute then keeps
+ * unauthenticated users on the public `/login` screen.
  */
 export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
         <Routes>
-          <Route path="/" element={<HomeStub />} />
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
@@ -43,7 +45,9 @@ export default function App() {
             path="/dashboard"
             element={
               <ProtectedRoute>
-                <Dashboard />
+                <AppLayout>
+                  <Dashboard />
+                </AppLayout>
               </ProtectedRoute>
             }
           />
@@ -51,7 +55,9 @@ export default function App() {
             path="/habits"
             element={
               <ProtectedRoute>
-                <Habits />
+                <AppLayout>
+                  <Habits />
+                </AppLayout>
               </ProtectedRoute>
             }
           />
@@ -59,7 +65,9 @@ export default function App() {
             path="/challenges"
             element={
               <ProtectedRoute>
-                <Challenges />
+                <AppLayout>
+                  <Challenges />
+                </AppLayout>
               </ProtectedRoute>
             }
           />
@@ -67,7 +75,19 @@ export default function App() {
             path="/agent"
             element={
               <ProtectedRoute>
-                <Agent />
+                <AppLayout>
+                  <Agent />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/wallet"
+            element={
+              <ProtectedRoute>
+                <AppLayout>
+                  <Wallet />
+                </AppLayout>
               </ProtectedRoute>
             }
           />
@@ -75,7 +95,9 @@ export default function App() {
             path="/settings"
             element={
               <ProtectedRoute>
-                <Settings />
+                <AppLayout>
+                  <Settings />
+                </AppLayout>
               </ProtectedRoute>
             }
           />
@@ -86,27 +108,17 @@ export default function App() {
   );
 }
 
-/** Placeholder home page shown at `/` — keeps the original foundation card. */
-function HomeStub() {
+/**
+ * Wrapper for every protected screen. Renders the shared Navigation above the
+ * page content and leaves the page to render its own <main className="shell">.
+ * Only used inside ProtectedRoute, so the nav never appears on the public auth
+ * pages.
+ */
+function AppLayout({ children }: { children: ReactNode }) {
   return (
-    <main className="shell">
-      <header className="shell__header">
-        <h1 className="shell__title">Habitra</h1>
-        <p className="shell__tagline">Autonomous accountability that remembers.</p>
-      </header>
-
-      <section className="card">
-        <h2 className="card__title">Frontend foundation ready</h2>
-        <p className="card__text">
-          This is the Stage 1 foundation: React + Vite + TypeScript only. No
-          application features are implemented yet.
-        </p>
-        <ul className="card__list">
-          {PLANNED_ROUTES.map((route) => (
-            <li key={route}>{route}</li>
-          ))}
-        </ul>
-      </section>
-    </main>
+    <>
+      <Navigation />
+      {children}
+    </>
   );
 }

@@ -393,6 +393,76 @@ export async function recallEntity(
 }
 
 /**
+ * Record or UPDATE the outcome of a recommendation.
+ *
+ * Unlike a fresh `saveRecommendationOutcome` (which the agent calls the moment a
+ * recommendation is produced, with `accepted`/`helpful` = null), this is the
+ * call a user makes LATER — after they have actually accepted/declined it or
+ * rated whether it helped. It loads the existing recommendation entity, merges
+ * the supplied fields, and re-writes it, so the original text/source are
+ * preserved and the learning loop keeps a single canonical record per
+ * recommendation.
+ *
+ * `accepted` (true=accepted, false=declined, null=unknown) and `helpful`
+ * (true=helpful, false=not helpful, null=unknown) are merged independently; an
+ * omitted field is left untouched. An outcome that was never recorded stays
+ * null/unknown — it is never silently upgraded to success.
+ */
+export interface RecordRecommendationOutcomeInput {
+  accepted?: boolean | null;
+  helpful?: boolean | null;
+  /** Optional text to set/refresh; defaults to the existing value if present. */
+  text?: string | null;
+  /** Optional source tag; defaults to the existing value or 'agent_recommendation_v1'. */
+  source?: string;
+}
+
+export async function recordRecommendationOutcome(
+  userId: string,
+  recommendationId: string,
+  input: RecordRecommendationOutcomeInput,
+): Promise<MemoryWriteResult> {
+  if (!env.sibylEnabled) return disabledMeta();
+
+  const secretCheck = refuseIfSecret({
+    recommendationId,
+    accepted: input.accepted ?? null,
+    helpful: input.helpful ?? null,
+    text: input.text ?? null,
+  });
+  if (secretCheck) {
+    warn('recordRecommendationOutcome', secretCheck);
+    return { remembered: false, ok: false, error: secretCheck };
+  }
+
+  // Load the existing record so we merge rather than clobber. The initial record
+  // is written by the agent with null/null; preserving its text/source matters.
+  const existing = await recallEntity(userId, 'recommendation', recommendationId);
+  const base: RecommendationOutcome =
+    existing.ok && existing.entity?.body && typeof existing.entity.body === 'object'
+      ? { ...(existing.entity.body as RecommendationOutcome) }
+      : { recommendationId, source: 'agent_recommendation_v1', text: null };
+
+  if (input.accepted !== undefined) base.accepted = input.accepted;
+  if (input.helpful !== undefined) base.helpful = input.helpful;
+  if (input.text !== undefined) base.text = input.text;
+  base.recommendationId = recommendationId;
+  base.source = input.source ?? base.source ?? 'agent_recommendation_v1';
+
+  const response = await runSibylOp({
+    op: 'set_entity',
+    tenantId: userId,
+    args: { category: 'recommendation', name: recommendationId, body: base },
+  });
+
+  if (!response.ok) {
+    warn('recordRecommendationOutcome', response.error);
+    return toMeta(response);
+  }
+  return okMeta();
+}
+
+/**
  * Archive a habit's behavioral memory (recoverable, not deleted). Used when a
  * habit is retired so its profile no longer pollutes recall/search. Safe no-op
  * when disabled; returns ok:true if there was simply nothing to archive.

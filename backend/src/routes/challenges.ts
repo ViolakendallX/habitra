@@ -11,6 +11,12 @@ import {
   type CompletionStatus,
 } from '../services/challenges.js';
 import { normalizeCalendarDate } from '../services/analytics.js';
+import {
+  getChallengeEscrowState,
+  lockChallengeStake,
+  settleChallengeForEvaluation,
+  type EscrowResult,
+} from '../services/challengeEscrow.js';
 
 const calendarDatePattern = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -41,6 +47,14 @@ const createChallengeSchema = z.object({
     .string()
     .trim()
     .min(1, 'Habit is required.'),
+});
+
+const stakeChallengeSchema = z.object({
+  amount: z
+    .string()
+    .trim()
+    .min(1, 'Stake amount is required.')
+    .max(78, 'Stake amount is too large.'),
 });
 
 const challengePublicFields = {
@@ -623,6 +637,132 @@ challengesRouter.post('/:challengeId/commit', requireAuth, async (req: Request, 
   }
 });
 
+/**
+ * Maps an `EscrowResult` onto an HTTP status. Only used for the non-ok branch
+ * and to distinguish created / duplicate / awaiting-signature responses.
+ */
+function escrowHttpStatus(result: EscrowResult): number {
+  if (result.ok) {
+    if (result.duplicate) return 200;
+    if (result.code === 'REQUIRES_USER_SIGNATURE') return 202;
+    return 201;
+  }
+
+  switch (result.code) {
+    case 'CHALLENGE_NOT_FOUND':
+      return 404;
+    case 'INVALID_AMOUNT':
+    case 'INVALID_END_DATE':
+    case 'PERSISTENCE_ERROR':
+      return 400;
+    case 'NO_WALLET':
+    case 'STAKE_NOT_LOCKED':
+    case 'CHALLENGE_CLOSED':
+    case 'CHALLENGE_NOT_SETTLED_STATE':
+      return 409;
+    case 'CHAIN_NOT_CONFIGURED':
+    case 'NO_SIGNER':
+    case 'NO_ONCHAIN_COMMITMENT':
+    case 'ONCHAIN_FAILED':
+      return 503;
+    default:
+      return 400;
+  }
+}
+
+challengesRouter.post('/:challengeId/stake', requireAuth, async (req: Request, res: Response) => {
+  const authenticatedUser = req.authUser;
+  if (!authenticatedUser) {
+    res.status(401).json(UNAUTHORIZED);
+    return;
+  }
+
+  const challengeId = resolveChallengeId(req);
+  if (!challengeId) {
+    res.status(404).json({
+      status: 'error',
+      message: 'Challenge not found.',
+    });
+    return;
+  }
+
+  const parsed = stakeChallengeSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(400).json({
+      status: 'error',
+      message: 'Validation failed.',
+      errors: z.flattenError(parsed.error).fieldErrors,
+    });
+    return;
+  }
+
+  try {
+    const result = await lockChallengeStake({
+      userId: authenticatedUser.id,
+      challengeId,
+      amount: parsed.data.amount,
+    });
+
+    if (!result.ok) {
+      res.status(escrowHttpStatus(result)).json({
+        status: 'error',
+        message: result.message,
+        code: result.code,
+      });
+      return;
+    }
+
+    res.status(escrowHttpStatus(result)).json({
+      status: 'success',
+      data: { escrow: result },
+    });
+  } catch {
+    res.status(500).json({
+      status: 'error',
+      message: 'Unable to lock challenge stake.',
+    });
+  }
+});
+
+challengesRouter.get('/:challengeId/escrow', requireAuth, async (req: Request, res: Response) => {
+  const authenticatedUser = req.authUser;
+  if (!authenticatedUser) {
+    res.status(401).json(UNAUTHORIZED);
+    return;
+  }
+
+  const challengeId = resolveChallengeId(req);
+  if (!challengeId) {
+    res.status(404).json({
+      status: 'error',
+      message: 'Challenge not found.',
+    });
+    return;
+  }
+
+  try {
+    const state = await getChallengeEscrowState(authenticatedUser.id, challengeId);
+
+    if (!state) {
+      res.status(404).json({
+        status: 'error',
+        message: 'Challenge not found.',
+      });
+      return;
+    }
+
+    res.status(200).json({
+      status: 'success',
+      data: { escrow: state },
+    });
+  } catch {
+    res.status(500).json({
+      status: 'error',
+      message: 'Unable to load challenge escrow state.',
+    });
+  }
+});
+
 challengesRouter.post('/:challengeId/evaluate', requireAuth, async (req: Request, res: Response) => {
   const authenticatedUser = req.authUser;
   if (!authenticatedUser) {
@@ -678,7 +818,11 @@ challengesRouter.post('/:challengeId/evaluate', requireAuth, async (req: Request
           },
         });
 
-        return { kind: 'UPDATED' } as const;
+        return {
+          kind: 'UPDATED',
+          status: 'FAILED',
+          failureReason: snapshot.progress.failureReason,
+        } as const;
       }
 
       if (targetStatus === 'COMPLETED') {
@@ -694,7 +838,11 @@ challengesRouter.post('/:challengeId/evaluate', requireAuth, async (req: Request
           },
         });
 
-        return { kind: 'UPDATED' } as const;
+        return {
+          kind: 'UPDATED',
+          status: 'COMPLETED',
+          failureReason: null,
+        } as const;
       }
 
       return { kind: 'NOOP' } as const;
@@ -706,6 +854,28 @@ challengesRouter.post('/:challengeId/evaluate', requireAuth, async (req: Request
         message: 'Challenge not found.',
       });
       return;
+    }
+
+    // The evaluator has spoken: enforce the economic consequence exactly once.
+    // A settlement problem must never change the challenge verdict or fail the
+    // request, so every outcome here is logged and swallowed.
+    if (evaluation.kind === 'UPDATED') {
+      try {
+        const settlement = await settleChallengeForEvaluation(
+          authenticatedUser.id,
+          challengeId,
+          evaluation.status,
+          evaluation.failureReason,
+        );
+
+        if (settlement && !settlement.ok) {
+          console.warn(
+            `[challenges] escrow settlement not applied (${settlement.code}): ${settlement.message}`,
+          );
+        }
+      } catch (error) {
+        console.warn('[challenges] escrow settlement failed unexpectedly:', error);
+      }
     }
 
     const challenge = await buildChallengeResponseForUser(authenticatedUser.id, challengeId);
