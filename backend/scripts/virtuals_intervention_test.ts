@@ -13,7 +13,9 @@ import {
   createFakeVirtualsClient,
   createInterventionService,
   interventionService,
+  selectInterventionBackend,
   type InterventionOutcome,
+  type InterventionProvider,
   type InterventionRequest,
   type InterventionResult,
 } from '../src/services/virtuals.js';
@@ -325,13 +327,21 @@ async function main(): Promise<void> {
   );
 
   // ---------------- Default singleton ----------------
+  // The singleton's provider is chosen once at import by the application's own
+  // selection logic. Assert it MATCHES that selection rather than hard-coding
+  // 'mock', so the guard stays valid whether ACP v2 is enabled + fully
+  // configured (-> 'virtuals') or not (-> 'mock'). This preserves the guard's
+  // purpose: the singleton must never diverge from selectInterventionBackend().
+  const selected = selectInterventionBackend();
+  const expectedProvider: InterventionProvider =
+    selected.backend === 'virtuals_acp_v2' ? 'virtuals' : 'mock';
   const defaulted = await interventionService.requestIntervention(
     buildRequest({ interventionId: 'int-default' }),
   );
   check(
-    'module singleton works with no configuration or credentials',
-    defaulted.ok === true && defaulted.provider === 'mock',
-    `provider=${defaulted.provider}`,
+    'module singleton matches the provider selected by selectInterventionBackend()',
+    defaulted.provider === expectedProvider,
+    `provider=${defaulted.provider} expected=${expectedProvider} ok=${defaulted.ok}`,
   );
 
   const failed = results.filter((r) => !r.pass);
