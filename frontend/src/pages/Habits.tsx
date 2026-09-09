@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 
 import { api, isApiError } from '../lib/http';
 import { useAuth } from '../context/AuthContext';
+import { useNotifications } from '../context/NotificationContext';
 import type {
   CompletionListResponse,
   CompletionResponse,
@@ -298,6 +299,7 @@ function HabitForm({ initialValues, submitLabel, onSubmit, onCancel }: HabitForm
 
 export default function Habits() {
   const { user } = useAuth();
+  const { refresh: refreshNotifications } = useNotifications();
 
   const [today] = useState(todayIso);
   const [habits, setHabits] = useState<Habit[]>([]);
@@ -410,6 +412,8 @@ export default function Habits() {
       });
 
       setTodayStatus((current) => ({ ...current, [habit.id]: status }));
+      // The bell is derived from this same data, so drop the now-stale nudge.
+      void refreshNotifications();
       setMissFor(null);
       setMissReason('');
       setBanner({

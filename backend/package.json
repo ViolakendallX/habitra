@@ -22,6 +22,7 @@
     "test:challenges_api": "node --env-file-if-exists=.env node_modules/tsx/dist/cli.mjs scripts/challenges_api_test.ts",
     "test:blockchain_persistence": "node --env-file-if-exists=.env node_modules/tsx/dist/cli.mjs scripts/blockchain_persistence_test.ts",
     "test:challenge_escrow": "node --env-file-if-exists=.env node_modules/tsx/dist/cli.mjs scripts/challenge_escrow_test.ts",
+    "test:challenge_escrow_confirm": "node --env-file-if-exists=.env node_modules/tsx/dist/cli.mjs scripts/challenge_escrow_confirm_test.ts",
     "test:wallet_api": "node --env-file-if-exists=.env node_modules/tsx/dist/cli.mjs scripts/wallet_api_test.ts",
     "test:virtuals_intervention": "node --env-file-if-exists=.env node_modules/tsx/dist/cli.mjs scripts/virtuals_intervention_test.ts",
     "test:virtuals_acp_v2": "node --env-file-if-exists=.env node_modules/tsx/dist/cli.mjs scripts/virtuals_acp_v2_adapter_test.ts",

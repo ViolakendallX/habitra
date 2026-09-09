@@ -8,7 +8,8 @@
     "test": "hardhat test",
     "test:contracts": "hardhat test",
     "node": "hardhat node",
-    "deploy:base-sepolia": "hardhat run scripts/deploy.js --network baseSepolia"
+    "deploy:base-sepolia": "hardhat run scripts/deploy.js --network baseSepolia",
+    "mint:base-sepolia": "hardhat run scripts/mint.js --network baseSepolia"
   },
   "devDependencies": {
     "@openzeppelin/contracts": "^5.6.1",

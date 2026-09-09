@@ -40,6 +40,8 @@
  * `EscrowResult` so that an escrow problem can never break challenge evaluation.
  */
 
+import { decodeEventLog } from 'viem';
+
 import { prisma } from '../db/prisma.js';
 import {
   getBlockchainConfig,
@@ -96,6 +98,22 @@ export type EscrowCode =
   | 'ONCHAIN_FAILED'
   /** Live lock requires the user's own signature (the backend has no user key). */
   | 'REQUIRES_USER_SIGNATURE'
+  /** The supplied transaction hash is not a valid 0x-prefixed 32-byte hash. */
+  | 'INVALID_TX_HASH'
+  /** No transaction / receipt was found on-chain for the supplied hash. */
+  | 'TX_NOT_FOUND'
+  /** The supplied transaction reverted, so no stake was locked. */
+  | 'TX_REVERTED'
+  /** The supplied transaction was sent on a chain other than Base Sepolia. */
+  | 'TX_CHAIN_MISMATCH'
+  /** The supplied transaction was not sent to the escrow contract. */
+  | 'TX_CONTRACT_MISMATCH'
+  /** No matching ChallengeLocked event, or its challenge/user/amount differ. */
+  | 'LOCK_EVENT_MISMATCH'
+  /** The on-chain commitment does not match the expected lock. */
+  | 'COMMITMENT_MISMATCH'
+  /** A stake lock is already confirmed and cannot be re-pointed at another tx. */
+  | 'LOCK_ALREADY_CONFIRMED'
   /** Database write failed. */
   | 'PERSISTENCE_ERROR';
 
@@ -138,6 +156,28 @@ export interface LockChallengeStakeInput {
   endsAt?: Date;
 }
 
+export interface ConfirmUserLockInput {
+  userId: string;
+  challengeId: string;
+  /**
+   * On-chain lock transaction hash, as reported by the user's own wallet.
+   * Public data only — never a key, seed or any other secret.
+   */
+  txHash: string;
+}
+
+/** The read-only viem client used to verify a user-signed transaction. */
+export type EscrowPublicClient = NonNullable<ReturnType<typeof getPublicClient>>;
+
+/**
+ * Injectable seam so the reconciliation rules can be exercised in tests
+ * without any network access. Defaults to the shared client from
+ * `services/blockchain.ts`.
+ */
+export interface ConfirmUserLockDependencies {
+  getClient?: () => EscrowPublicClient | null;
+}
+
 export interface SettleChallengeInput {
   userId: string;
   challengeId: string;
@@ -174,6 +214,8 @@ export interface ChallengeEscrowState {
 
 const BASE_UNITS_PATTERN = /^\d+$/;
 const SETTLEMENT_TYPES: readonly string[] = ['CLAIM', 'PENALTY'];
+/** A valid EVM transaction hash: 0x followed by 64 hex characters. */
+const TX_HASH_PATTERN = /^0x[0-9a-fA-F]{64}$/;
 
 /**
  * `Transaction.amount` is a Prisma `BigInt`, stored as Postgres `int8`, so the
@@ -237,6 +279,18 @@ function failure(
   return baseResult(input, { ok: false, code, message });
 }
 
+/**
+ * Like `failure`, but for the live reconciliation path: a refusal is never a
+ * simulated record, because the (real) stake row it refers to is untouched.
+ */
+function refusal(
+  input: { challengeId: string; action: EscrowAction },
+  code: EscrowCode,
+  message: string,
+): EscrowResult {
+  return baseResult(input, { ok: false, simulated: false, code, message });
+}
+
 async function loadOwnedChallenge(userId: string, challengeId: string) {
   return prisma.challenge.findFirst({
     where: { id: challengeId, userId },
@@ -269,6 +323,87 @@ export function findSettlement(transactions: TransactionRecord[]): TransactionRe
       (tx) => SETTLEMENT_TYPES.includes(tx.type) && tx.status !== 'FAILED',
     ) ?? null
   );
+}
+
+/**
+ * Read an escrow commitment. viem decodes the named Solidity struct into an
+ * object, so `endsAt` / `amount` are read as bigints.
+ */
+async function readCommitment(
+  client: EscrowPublicClient,
+  escrowAddress: `0x${string}`,
+  commitmentId: bigint,
+) {
+  return client.readContract({
+    address: escrowAddress,
+    abi: habitraChallengeEscrowAbi,
+    functionName: 'getCommitment',
+    args: [commitmentId],
+  });
+}
+
+interface DecodedChallengeLocked {
+  commitmentId: bigint;
+  challengeId: string;
+  user: `0x${string}`;
+  amount: bigint;
+}
+
+/**
+ * Find and decode the `ChallengeLocked` event in a receipt's logs.
+ *
+ * The event carries `commitmentId` (indexed), `challengeId`, `user` (indexed)
+ * and `amount` — but NOT `endsAt`. That is why the commitment itself is
+ * re-read separately when reconciling a lock.
+ */
+function decodeChallengeLocked(
+  logs: readonly unknown[],
+  escrowAddress: string,
+): DecodedChallengeLocked | null {
+  const target = escrowAddress.toLowerCase();
+
+  for (const entry of logs) {
+    const log = entry as {
+      address?: string;
+      topics?: readonly `0x${string}`[];
+      data?: `0x${string}`;
+    };
+
+    if (!log?.address || log.address.toLowerCase() !== target) continue;
+    if (!log.topics || log.topics.length === 0) continue;
+
+    try {
+      const decoded = decodeEventLog({
+        abi: habitraChallengeEscrowAbi,
+        data: log.data ?? '0x',
+        topics: log.topics as [`0x${string}`, ...`0x${string}`[]],
+      });
+
+      if (decoded.eventName !== 'ChallengeLocked') continue;
+
+      const args = decoded.args as {
+        commitmentId?: bigint;
+        challengeId?: string;
+        user?: string;
+        amount?: bigint;
+      };
+
+      if (typeof args.challengeId !== 'string') continue;
+      if (typeof args.user !== 'string') continue;
+      if (typeof args.amount !== 'bigint') continue;
+
+      return {
+        commitmentId: args.commitmentId ?? 0n,
+        challengeId: args.challengeId,
+        user: args.user as `0x${string}`,
+        amount: args.amount,
+      };
+    } catch {
+      // Not a ChallengeLocked log (or not decodable) — keep scanning.
+    }
+  }
+
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -409,6 +544,301 @@ export async function lockChallengeStake(
     const detail =
       error instanceof BlockchainPersistenceError ? error.message : 'Unknown persistence error.';
     return failure(ctx, 'PERSISTENCE_ERROR', detail);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 1b. Reconcile a user-signed lock transaction with its PENDING FUND record
+// ---------------------------------------------------------------------------
+
+/**
+ * Reconcile the on-chain lock a user signed themselves with the PENDING FUND
+ * row `lockChallengeStake` wrote when it handed back the call descriptor.
+ *
+ * This closes the gap in the live flow: the backend cannot broadcast `lock`
+ * (it holds no user key), so the row stays PENDING with `txHash = null` until
+ * the user's wallet reports the hash back. This function NEVER trusts that
+ * hash — it is read-only on-chain and proves, before writing anything, that
+ * the transaction:
+ *   - exists on Base Sepolia and did NOT revert,
+ *   - was sent to the deployed escrow contract,
+ *   - emitted `ChallengeLocked` for THIS challenge, THIS linked wallet and the
+ *     recorded stake amount, and
+ *   - produced a commitment whose endsAt matches the challenge end date and
+ *     which has not already been settled.
+ *
+ * Only then is the FUND row flipped to CONFIRMED with the real hash. Any
+ * failed verification leaves the row PENDING so the user can retry with the
+ * correct hash — a bad hash never destroys a stake. The operation is
+ * idempotent: confirming the same hash twice is a no-op success, while
+ * re-pointing an already-confirmed lock at a different transaction is refused.
+ *
+ * Nothing here signs or broadcasts: it uses only the read-only public client.
+ */
+export async function confirmUserLock(
+  input: ConfirmUserLockInput,
+  deps: ConfirmUserLockDependencies = {},
+): Promise<EscrowResult> {
+  const action: EscrowAction = 'FUND';
+  const ctx = { challengeId: input.challengeId, action };
+
+  const rawHash = typeof input.txHash === 'string' ? input.txHash.trim() : '';
+  if (!TX_HASH_PATTERN.test(rawHash)) {
+    return refusal(
+      ctx,
+      'INVALID_TX_HASH',
+      'txHash must be a 0x-prefixed 32-byte (64 hex character) transaction hash.',
+    );
+  }
+  const txHash = rawHash.toLowerCase() as `0x${string}`;
+
+  const challenge = await loadOwnedChallenge(input.userId, input.challengeId);
+  if (!challenge) {
+    return refusal(ctx, 'CHALLENGE_NOT_FOUND', 'Challenge not found for this user.');
+  }
+
+  const wallet = await getUserWalletForChain(input.userId, DEFAULT_CHAIN_ID);
+  if (!wallet) {
+    return refusal(
+      ctx,
+      'NO_WALLET',
+      'No wallet is linked to this account on Base Sepolia, so no stake lock can be confirmed.',
+    );
+  }
+
+  const transactions = await loadChallengeTransactions(input.userId, input.challengeId);
+  const stake = findStakeLock(transactions);
+  if (!stake) {
+    return refusal(
+      ctx,
+      'STAKE_NOT_LOCKED',
+      'No stake lock exists for this challenge, so there is nothing to confirm.',
+    );
+  }
+
+  // Idempotency: never re-associate an already-confirmed lock with a new hash.
+  if (stake.status === 'CONFIRMED') {
+    if (stake.txHash != null && stake.txHash.toLowerCase() === txHash) {
+      return baseResult(ctx, {
+        ok: true,
+        duplicate: true,
+        simulated: false,
+        transaction: stake,
+        txHash: stake.txHash,
+        code: 'LOCKED',
+        message: 'This stake lock has already been confirmed with the same transaction hash.',
+      });
+    }
+    return refusal(
+      ctx,
+      'LOCK_ALREADY_CONFIRMED',
+      'This stake lock is already confirmed and cannot be associated with a different transaction.',
+    );
+  }
+
+  if (stake.status !== 'PENDING') {
+    return refusal(
+      ctx,
+      'LOCK_ALREADY_CONFIRMED',
+      `The stake lock for this challenge is ${stake.status}, so it cannot be confirmed.`,
+    );
+  }
+
+  if (stake.amount == null) {
+    return refusal(
+      ctx,
+      'LOCK_EVENT_MISMATCH',
+      'The recorded stake has no amount, so it cannot be matched against an on-chain lock.',
+    );
+  }
+  const expectedAmount = BigInt(stake.amount);
+  const expectedEndsAt = BigInt(toUnixSeconds(challenge.endDate));
+
+  const contracts = getDeployedContracts();
+  const escrowAddress = contracts.escrowAddress;
+  const client = (deps.getClient ?? getPublicClient)();
+
+  if (!client || !contracts.ready || !escrowAddress) {
+    return refusal(
+      ctx,
+      'CHAIN_NOT_CONFIGURED',
+      'On-chain mode is disabled or the chain/contract configuration is incomplete, ' +
+        'so the transaction cannot be verified.',
+    );
+  }
+
+  // 1. The transaction must exist and must not have reverted.
+  let receipt: Awaited<ReturnType<NonNullable<typeof client>['getTransactionReceipt']>>;
+  try {
+    receipt = await client.getTransactionReceipt({ hash: txHash });
+  } catch {
+    return refusal(
+      ctx,
+      'TX_NOT_FOUND',
+      'No transaction receipt was found on Base Sepolia for that hash.',
+    );
+  }
+
+  if (receipt.status === 'reverted') {
+    return refusal(
+      ctx,
+      'TX_REVERTED',
+      'That transaction reverted, so no stake was locked.',
+    );
+  }
+
+  // 2. It must be a Base Sepolia transaction sent to the escrow contract.
+  let transaction: Awaited<ReturnType<NonNullable<typeof client>['getTransaction']>>;
+  try {
+    transaction = await client.getTransaction({ hash: txHash });
+  } catch {
+    return refusal(ctx, 'TX_NOT_FOUND', 'No transaction was found on Base Sepolia for that hash.');
+  }
+
+  // `chainId` is absent on some transaction shapes (e.g. deposits), so read it
+  // defensively: anything other than Base Sepolia is refused.
+  const txChainId = 'chainId' in transaction ? transaction.chainId : undefined;
+
+  if (txChainId !== DEFAULT_CHAIN_ID) {
+    return refusal(
+      ctx,
+      'TX_CHAIN_MISMATCH',
+      `That transaction is on chain ${String(txChainId)}, not Base Sepolia (${DEFAULT_CHAIN_ID}).`,
+    );
+  }
+
+  if (!transaction.to || transaction.to.toLowerCase() !== escrowAddress.toLowerCase()) {
+    return refusal(
+      ctx,
+      'TX_CONTRACT_MISMATCH',
+      'That transaction was not sent to the Habitra escrow contract.',
+    );
+  }
+
+  // 3. It must have emitted ChallengeLocked for this challenge, wallet and amount.
+  const locked = decodeChallengeLocked(receipt.logs, escrowAddress);
+  if (!locked) {
+    return refusal(
+      ctx,
+      'LOCK_EVENT_MISMATCH',
+      'That transaction did not emit a ChallengeLocked event from the Habitra escrow contract.',
+    );
+  }
+
+  if (locked.challengeId !== input.challengeId) {
+    return refusal(
+      ctx,
+      'LOCK_EVENT_MISMATCH',
+      'That transaction locked a stake for a different challenge.',
+    );
+  }
+
+  if (locked.user.toLowerCase() !== wallet.address.toLowerCase()) {
+    return refusal(
+      ctx,
+      'LOCK_EVENT_MISMATCH',
+      'That transaction was sent by a wallet other than the one linked to this account.',
+    );
+  }
+
+  if (locked.amount !== expectedAmount) {
+    return refusal(
+      ctx,
+      'LOCK_EVENT_MISMATCH',
+      `That transaction locked ${locked.amount.toString()} base units, ` +
+        `but the recorded stake is ${expectedAmount.toString()} base units.`,
+    );
+  }
+
+  // 4. The on-chain commitment must match (endsAt is not in the event).
+  let commitmentId: bigint;
+  try {
+    commitmentId = await client.readContract({
+      address: escrowAddress,
+      abi: habitraChallengeEscrowAbi,
+      functionName: 'commitmentIdByChallenge',
+      args: [input.challengeId],
+    });
+  } catch {
+    return refusal(ctx, 'CHAIN_NOT_CONFIGURED', 'Unable to read the escrow contract on Base Sepolia.');
+  }
+
+  if (commitmentId === 0n) {
+    return refusal(
+      ctx,
+      'NO_ONCHAIN_COMMITMENT',
+      'No escrow commitment exists on-chain for this challenge id.',
+    );
+  }
+
+  if (locked.commitmentId !== 0n && locked.commitmentId !== commitmentId) {
+    return refusal(
+      ctx,
+      'COMMITMENT_MISMATCH',
+      'The locked commitment does not match the escrow commitment for this challenge.',
+    );
+  }
+
+  let commitment: Awaited<ReturnType<typeof readCommitment>>;
+  try {
+    commitment = await readCommitment(client, escrowAddress, commitmentId);
+  } catch {
+    return refusal(ctx, 'CHAIN_NOT_CONFIGURED', 'Unable to read the escrow commitment on Base Sepolia.');
+  }
+
+  if (commitment.challengeId !== input.challengeId) {
+    return refusal(ctx, 'COMMITMENT_MISMATCH', 'The on-chain commitment belongs to a different challenge.');
+  }
+
+  if (commitment.user.toLowerCase() !== wallet.address.toLowerCase()) {
+    return refusal(ctx, 'COMMITMENT_MISMATCH', 'The on-chain commitment belongs to a different wallet.');
+  }
+
+  if (commitment.amount !== expectedAmount) {
+    return refusal(ctx, 'COMMITMENT_MISMATCH', 'The on-chain commitment amount does not match the recorded stake.');
+  }
+
+  if (commitment.endsAt !== expectedEndsAt) {
+    return refusal(
+      ctx,
+      'COMMITMENT_MISMATCH',
+      `The on-chain commitment ends at ${commitment.endsAt.toString()}, ` +
+        `expected ${expectedEndsAt.toString()} (the challenge end date).`,
+    );
+  }
+
+  if (commitment.settled) {
+    return refusal(
+      ctx,
+      'COMMITMENT_MISMATCH',
+      'The on-chain commitment is already settled, so it can no longer be recorded as a fresh lock.',
+    );
+  }
+
+  // 5. Every check passed: record the real hash and confirm the stake.
+  try {
+    const confirmed = await updateTransaction({
+      userId: input.userId,
+      transactionId: stake.id,
+      status: 'CONFIRMED',
+      txHash,
+    });
+
+    return baseResult(ctx, {
+      ok: true,
+      simulated: false,
+      transaction: confirmed,
+      txHash,
+      commitmentId: commitmentId.toString(),
+      code: 'LOCKED',
+      message:
+        'Stake lock confirmed: the on-chain lock transaction was verified against this ' +
+        'challenge, wallet and amount, and the stake is now recorded as CONFIRMED.',
+    });
+  } catch (error) {
+    const detail =
+      error instanceof BlockchainPersistenceError ? error.message : 'Unknown persistence error.';
+    return refusal(ctx, 'PERSISTENCE_ERROR', detail);
   }
 }
 

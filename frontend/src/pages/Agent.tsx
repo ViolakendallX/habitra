@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 
+import { useNotifications } from '../context/NotificationContext';
 import { NETWORK_ERROR_STATUS, api, isApiError } from '../lib/http';
 import type { AgentRecommendation, AgentRecommendationResponse } from '../lib/types';
 
@@ -40,6 +41,7 @@ function errorMessageFor(error: unknown): string {
 }
 
 export default function Agent() {
+  const { registerAgentRecommendation } = useNotifications();
   const [state, setState] = useState<LoadState>('idle');
   const [errorMessage, setErrorMessage] = useState('');
   const [recommendation, setRecommendation] = useState<AgentRecommendation | null>(null);
@@ -66,6 +68,8 @@ export default function Agent() {
       }
 
       setRecommendation(next);
+      // Reuses the response already in hand; does not trigger another call.
+      registerAgentRecommendation(next);
       setState('success');
     } catch (error) {
       setState('error');

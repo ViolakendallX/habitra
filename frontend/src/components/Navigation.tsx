@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { NavLink } from 'react-router-dom';
 
 import { useAuth } from '../context/AuthContext';
+import NotificationBell from './NotificationBell';
 
 /**
  * Navigation bar for authenticated (protected) pages.
@@ -71,6 +72,7 @@ export default function Navigation() {
         </ul>
 
         <div className="navbar__account">
+          <NotificationBell />
           {user && <span className="navbar__user">{user.name}</span>}
           <form className="navbar__logout" onSubmit={handleLogout}>
             <button

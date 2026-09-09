@@ -12,6 +12,7 @@ import {
 } from '../services/challenges.js';
 import { normalizeCalendarDate } from '../services/analytics.js';
 import {
+  confirmUserLock,
   getChallengeEscrowState,
   lockChallengeStake,
   settleChallengeForEvaluation,
@@ -55,6 +56,17 @@ const stakeChallengeSchema = z.object({
     .trim()
     .min(1, 'Stake amount is required.')
     .max(78, 'Stake amount is too large.'),
+});
+
+/** The hash of a lock transaction the user signed with their own wallet. */
+const confirmLockSchema = z.object({
+  txHash: z
+    .string()
+    .trim()
+    .regex(
+      /^0x[0-9a-fA-F]{64}$/,
+      'txHash must be a 0x-prefixed 32-byte (64 hex character) transaction hash.',
+    ),
 });
 
 const challengePublicFields = {
@@ -655,10 +667,23 @@ function escrowHttpStatus(result: EscrowResult): number {
     case 'INVALID_END_DATE':
     case 'PERSISTENCE_ERROR':
       return 400;
+    // A supplied hash that is malformed, or a valid transaction that simply
+    // is not the expected lock, is a client error.
+    case 'INVALID_TX_HASH':
+    case 'TX_CHAIN_MISMATCH':
+    case 'TX_CONTRACT_MISMATCH':
+    case 'LOCK_EVENT_MISMATCH':
+      return 400;
+    case 'TX_NOT_FOUND':
+      return 404;
     case 'NO_WALLET':
     case 'STAKE_NOT_LOCKED':
     case 'CHALLENGE_CLOSED':
     case 'CHALLENGE_NOT_SETTLED_STATE':
+    // The lock is real but already recorded/settled: a conflict, not a bad request.
+    case 'TX_REVERTED':
+    case 'LOCK_ALREADY_CONFIRMED':
+    case 'COMMITMENT_MISMATCH':
       return 409;
     case 'CHAIN_NOT_CONFIGURED':
     case 'NO_SIGNER':
@@ -762,6 +787,76 @@ challengesRouter.get('/:challengeId/escrow', requireAuth, async (req: Request, r
     });
   }
 });
+
+/**
+ * Reconcile a lock transaction the user signed with their OWN wallet against
+ * the PENDING FUND row created by `POST /:challengeId/stake`.
+ *
+ * The backend cannot broadcast `lock` (it holds no user key), so the wallet
+ * reports the resulting hash here. That hash is never trusted: it is verified
+ * on-chain — receipt not reverted, chain id, escrow destination,
+ * `ChallengeLocked` event (challenge + wallet + amount) and the resulting
+ * commitment (endsAt, not settled) — before the stake is marked CONFIRMED.
+ * A failed verification leaves the stake PENDING so the correct hash can be
+ * submitted instead. Nothing is signed or broadcast by this endpoint.
+ */
+challengesRouter.post(
+  '/:challengeId/escrow/confirm',
+  requireAuth,
+  async (req: Request, res: Response) => {
+    const authenticatedUser = req.authUser;
+    if (!authenticatedUser) {
+      res.status(401).json(UNAUTHORIZED);
+      return;
+    }
+
+    const challengeId = resolveChallengeId(req);
+    if (!challengeId) {
+      res.status(404).json({
+        status: 'error',
+        message: 'Challenge not found.',
+      });
+      return;
+    }
+
+    const parsed = confirmLockSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      res.status(400).json({
+        status: 'error',
+        message: 'Validation failed.',
+        errors: z.flattenError(parsed.error).fieldErrors,
+      });
+      return;
+    }
+
+    try {
+      const result = await confirmUserLock({
+        userId: authenticatedUser.id,
+        challengeId,
+        txHash: parsed.data.txHash,
+      });
+
+      if (!result.ok) {
+        res.status(escrowHttpStatus(result)).json({
+          status: 'error',
+          message: result.message,
+          code: result.code,
+        });
+        return;
+      }
+
+      res.status(escrowHttpStatus(result)).json({
+        status: 'success',
+        data: { escrow: result },
+      });
+    } catch {
+      res.status(500).json({
+        status: 'error',
+        message: 'Unable to confirm the stake lock transaction.',
+      });
+    }
+  },
+);
 
 challengesRouter.post('/:challengeId/evaluate', requireAuth, async (req: Request, res: Response) => {
   const authenticatedUser = req.authUser;

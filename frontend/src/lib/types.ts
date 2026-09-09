@@ -235,13 +235,31 @@ export interface ChallengeListResponse {
   challenges: Challenge[];
 }
 
-/** Structured recommendation payload returned by GET /api/agent/recommendation. */
+/** The kinds of accountability action the agent may ask for. */
+export type AgentInterventionKind = 'nudge' | 'commitment_check' | 'escalate';
+
+/** The agent's intervention decision, mirroring the backend's zod schema. */
+export interface AgentIntervention {
+  needed: boolean;
+  kind: AgentInterventionKind;
+  reason: string;
+}
+
+/**
+ * Structured recommendation payload returned by GET /api/agent/recommendation.
+ *
+ * `intervention` is always present and is `null` when the agent decided no
+ * outreach was warranted. `recommendationId` identifies the stored
+ * recommendation memory so an outcome can be recorded later.
+ */
 export interface AgentRecommendation {
   message: string;
   recommendation: string;
   reason: string;
   memoryUsed: boolean;
   generatedAt: string;
+  recommendationId: string;
+  intervention: AgentIntervention | null;
 }
 
 export interface AgentRecommendationResponse {
@@ -279,6 +297,45 @@ export interface ConnectWalletInput {
  * secrets. `defaultChainId`/`supportedChainIds` come from the route; the rest
  * from the backend's getBlockchainStatus().
  */
+/**
+ * Payload of GET /api/challenges/:challengeId/escrow.
+ *
+ * Mirrors the backend's ChallengeEscrowState. Amounts are BEES base units
+ * (18 decimals) kept as strings because they can exceed Number's safe range.
+ * A stake with `simulated: true` was never broadcast — no transaction exists.
+ */
+export interface EscrowStakeTransaction {
+  transactionId: string;
+  amount: string | null;
+  status: string;
+  simulated: boolean;
+  createdAt: string;
+}
+
+export interface EscrowSettlementTransaction {
+  transactionId: string;
+  type: 'CLAIM' | 'PENALTY';
+  status: string;
+  simulated: boolean;
+  txHash: string | null;
+  createdAt: string;
+}
+
+export interface ChallengeEscrowState {
+  challengeId: string;
+  status: string;
+  mode: 'demo' | 'live' | 'unconfigured';
+  wallet: { id: string; address: string; chainId: number } | null;
+  stake: EscrowStakeTransaction | null;
+  settlement: EscrowSettlementTransaction | null;
+  settled: boolean;
+  simulated: boolean;
+}
+
+export interface ChallengeEscrowResponse {
+  escrow: ChallengeEscrowState;
+}
+
 export interface BlockchainStatus {
   mode: 'demo' | 'live' | 'unconfigured';
   chainId: number;

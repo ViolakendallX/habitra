@@ -585,6 +585,294 @@ body {
 }
 
 /*
+ * Dashboard. Wider than the default .shell so the two-up section fits, but
+ * every other building block (cards, badges, buttons, alerts) is reused.
+ * Mobile-first: single column, collapsing to two columns on wide screens.
+ */
+
+.shell--dashboard {
+  max-width: 960px;
+  padding: 32px 16px 64px;
+}
+
+@media (min-width: 700px) {
+  .shell--dashboard {
+    padding: 48px 24px 64px;
+  }
+}
+
+.dashboard__header {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 8px;
+}
+
+.dashboard__header .shell__tagline {
+  margin: 4px 0 0;
+}
+
+.dashboard__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dashboard__actions .btn {
+  text-decoration: none;
+}
+
+.dashboard__stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.dashboard__grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+@media (min-width: 800px) {
+  .dashboard__grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* Today's progress */
+.today {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+@media (min-width: 480px) {
+  .today {
+    flex-direction: row;
+    align-items: center;
+  }
+}
+
+.today__detail {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.today__count {
+  margin: 0;
+  font-size: 1.0625rem;
+}
+
+.today__count strong {
+  font-size: 1.375rem;
+}
+
+.progress-ring {
+  flex: 0 0 auto;
+  width: 104px;
+  height: 104px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: conic-gradient(
+    var(--habitra-accent) calc(var(--progress, 0) * 1%),
+    #ebebe6 0
+  );
+}
+
+.progress-ring__inner {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background-color: var(--habitra-surface);
+  display: grid;
+  place-items: center;
+  font-size: 1.0625rem;
+  font-weight: 600;
+}
+
+/* Week selector */
+.weekstrip {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+}
+
+.weekstrip__day {
+  padding: 8px 2px;
+  border: 1px solid var(--habitra-border);
+  border-radius: 10px;
+  background-color: var(--habitra-surface);
+  color: var(--habitra-text);
+  font-family: inherit;
+  text-align: center;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.weekstrip__day:hover {
+  background-color: #faf9f6;
+}
+
+.weekstrip__day--today {
+  border-color: var(--habitra-accent);
+}
+
+.weekstrip__day--selected {
+  background-color: #fef2ec;
+  border-color: var(--habitra-accent);
+  color: var(--habitra-accent);
+}
+
+.weekstrip__weekday {
+  display: block;
+  font-size: 0.6875rem;
+  color: var(--habitra-muted);
+}
+
+.weekstrip__date {
+  display: block;
+  font-size: 1.0625rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.weekstrip__tally {
+  display: block;
+  font-size: 0.6875rem;
+  color: var(--habitra-muted);
+}
+
+/* Habit cards */
+.habit-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+@media (min-width: 700px) {
+  .habit-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.habit-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--habitra-border);
+  border-radius: 10px;
+  padding: 16px;
+}
+
+.habit-card__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.habit-card__description {
+  margin: 0;
+  font-size: 0.9375rem;
+  color: var(--habitra-muted);
+}
+
+.habit-card__state {
+  margin: 0;
+}
+
+.habit-card__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: 0.8125rem;
+  color: var(--habitra-muted);
+  border-top: 1px solid var(--habitra-border);
+  padding-top: 8px;
+}
+
+/* Challenge + BEES */
+.progress-bar {
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  background-color: #ebebe6;
+  overflow: hidden;
+}
+
+.progress-bar__fill {
+  height: 100%;
+  border-radius: 999px;
+  background-color: var(--habitra-accent);
+  transition: width 0.2s ease;
+}
+
+.bees {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.bees__amount {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.bees__status {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.bees__rows {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 4px 16px;
+}
+
+@media (min-width: 560px) {
+  .bees__rows {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.bees__rows p {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+/* AI accountability */
+.insight {
+  margin-top: 14px;
+  border-top: 1px solid var(--habitra-border);
+  padding-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.insight__text {
+  margin: 0;
+  font-size: 1.0625rem;
+}
+
+.insight__row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/*
  * Shared top navigation for authenticated (protected) pages. Mounted once per
  * protected screen via AppLayout; never shown on the public auth pages.
  * Reuses the same CSS variables and BEM naming as the rest of the app.
@@ -676,5 +964,240 @@ body {
 
   .navbar__account {
     margin-left: auto;
+  }
+}
+
+/*
+ * Notification bell + dropdown. Anchored to the bell itself so the panel has a
+ * predictable position on every page, and sized to stay usable on a phone.
+ */
+.notifications {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.notifications__bell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--habitra-border);
+  border-radius: 8px;
+  background-color: var(--habitra-surface);
+  color: var(--habitra-muted);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.notifications__bell:hover {
+  background-color: #faf9f6;
+  color: var(--habitra-text);
+}
+
+.notifications__badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background-color: var(--habitra-accent);
+  color: #ffffff;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 17px;
+  text-align: center;
+}
+
+.notifications__panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 20;
+  width: min(320px, calc(100vw - 32px));
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 14px 16px;
+  background-color: var(--habitra-surface);
+  border: 1px solid var(--habitra-border);
+  border-radius: 12px;
+  box-shadow: 0 12px 28px rgba(27, 27, 25, 0.12);
+}
+
+.notifications__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.notifications__title {
+  margin: 0;
+  font-size: 0.9375rem;
+}
+
+.notifications__empty {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--habitra-muted);
+}
+
+.notifications__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.notifications__item {
+  padding: 10px 12px;
+  border: 1px solid var(--habitra-border);
+  border-left: 3px solid var(--habitra-border);
+  border-radius: 8px;
+  background-color: #fcfcfa;
+}
+
+.notifications__item--warning {
+  border-left-color: #b45309;
+}
+
+.notifications__item--urgent {
+  border-left-color: var(--habitra-accent);
+}
+
+.notifications__item-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.notifications__item-title {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.notifications__dismiss {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--habitra-muted);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.notifications__dismiss:hover {
+  background-color: #f1f0ec;
+  color: var(--habitra-text);
+}
+
+.notifications__item-message {
+  margin: 4px 0 6px;
+  font-size: 0.8125rem;
+  color: var(--habitra-muted);
+}
+
+.notifications__link {
+  font-size: 0.8125rem;
+  color: var(--habitra-accent);
+  text-decoration: none;
+}
+
+.notifications__link:hover {
+  text-decoration: underline;
+}
+
+/* Settings page */
+.settings__toggles {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.settings__toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 0.9375rem;
+  cursor: pointer;
+}
+
+.settings__toggle input {
+  margin-top: 3px;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  accent-color: var(--habitra-accent);
+}
+
+.settings__toggle span {
+  display: flex;
+  flex-direction: column;
+}
+
+.settings__toggle input:disabled + span {
+  color: var(--habitra-muted);
+}
+
+.settings__hint {
+  font-size: 0.8125rem;
+  color: var(--habitra-muted);
+}
+
+.settings__rows {
+  margin: 0 0 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 0.9375rem;
+  border-bottom: 1px solid var(--habitra-border);
+  padding-bottom: 8px;
+}
+
+.settings__row dt {
+  color: var(--habitra-muted);
+}
+
+.settings__row dd {
+  margin: 0;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.settings__logout {
+  margin: 0;
+}
+
+/* Keep the dropdown from hanging off the edge of a small screen. */
+@media (max-width: 560px) {
+  .notifications__panel {
+    right: auto;
+    left: auto;
+    /* Anchored to the viewport instead: the bell sits mid-bar on mobile. */
+    position: fixed;
+    top: 56px;
+    left: 16px;
+    right: 16px;
+    width: auto;
   }
 }
