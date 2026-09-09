@@ -159,7 +159,8 @@ export default function Wallet() {
       <header className="shell__header">
         <h1 className="shell__title">Habitra Wallet</h1>
         <p className="shell__tagline">
-          Link a public wallet on Base Sepolia. No on-chain transactions yet.
+          Link a public wallet on Base Sepolia. Committing to a challenge
+          approves BEES and locks your stake on-chain.
         </p>
         {user && <p className="habits__user">Signed in as {user.name}</p>}
       </header>
@@ -321,10 +322,11 @@ export default function Wallet() {
       <section className="card">
         <h2 className="card__title">Transaction history</h2>
         <p className="habits__muted">
-          Not available yet — the backend does not expose a transaction-history
-          endpoint, so nothing is fetched or invented here. Transaction records
-          already exist in the database, but no on-chain transactions are
-          performed at this stage.
+          Not listed here yet — the backend does not expose a
+          transaction-history endpoint, so nothing is fetched or invented.
+          Staking approves BEES and locks the stake in the escrow contract on
+          Base Sepolia; the lock is verified on-chain before the stake is
+          confirmed. Stake status is shown with each challenge.
         </p>
       </section>
     </main>

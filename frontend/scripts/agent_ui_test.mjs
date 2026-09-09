@@ -62,6 +62,24 @@ async function run() {
     console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? `  ::  ${detail}` : ''}`);
   }
 
+  /**
+   * Assert that a locator becomes visible, waiting up to `timeout` first.
+   *
+   * A bare `isVisible()` is a one-shot DOM read: right after a click React has
+   * only just switched to its loading state, so the previous error text is
+   * already unmounted and the new one has not been rendered yet — the read
+   * lands in that gap and reports false. Waiting still requires the exact same
+   * text to appear; it just stops sampling the DOM in the middle of a render.
+   */
+  async function checkVisible(name, locator, timeout = 5000) {
+    try {
+      await locator.waitFor({ state: 'visible', timeout });
+      check(name, true);
+    } catch {
+      check(name, false, `text did not become visible within ${timeout}ms`);
+    }
+  }
+
   await waitForUrl(backendHealth);
   await waitForUrl(appBase);
 
@@ -189,17 +207,17 @@ async function run() {
     // 502
     scenario = 'error_502';
     await page.getByRole('button', { name: 'Get my recommendation' }).click();
-    check('502 handled with useful message', await page.getByText('could not generate a recommendation right now').isVisible());
+    await checkVisible('502 handled with useful message', page.getByText('could not generate a recommendation right now'));
 
     // 503
     scenario = 'error_503';
     await page.getByRole('button', { name: 'Get my recommendation' }).click();
-    check('503 handled with configuration message', await page.getByText('agent is not configured yet').isVisible());
+    await checkVisible('503 handled with configuration message', page.getByText('agent is not configured yet'));
 
     // network
     scenario = 'network_error';
     await page.getByRole('button', { name: 'Get my recommendation' }).click();
-    check('network failure handled gracefully', await page.getByText('Unable to reach the server').isVisible());
+    await checkVisible('network failure handled gracefully', page.getByText('Unable to reach the server'));
 
     const noUserIdOverride = requestUrls.every((url) => !new URL(url).searchParams.has('userId'));
     check('recommendation request does not send userId override', noUserIdOverride);
