@@ -2,6 +2,7 @@
   "name": "habitra-frontend",
   "private": true,
   "version": "0.1.0",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -19,7 +20,8 @@
   "dependencies": {
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "react-router-dom": "^7.18.3"
+    "react-router-dom": "^7.18.3",
+    "viem": "2.56.3"
   },
   "devDependencies": {
     "@types/react": "^19.2.18",

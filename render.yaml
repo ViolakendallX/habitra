@@ -1,0 +1,91 @@
+# Render Blueprint — Habitra (single-origin deployment)
+#
+# One Web Service runs the Node backend AND serves the compiled frontend from the
+# same origin. This keeps the HttpOnly auth cookie first-party (no CORS, no
+# cross-origin cookie configuration) and means there is nothing to wire between a
+# frontend host and a backend host.
+#
+# Apply this file from the Render Dashboard ("Blueprints" -> "New Blueprint") or
+# connect your GitHub repo and select it. All secrets use `sync: false` so Render
+# prompts you to paste them once and never stores them in this file.
+services:
+  - type: web
+    name: habitra
+    runtime: node
+    region: frankfurt          # matches Neon (eu-central-1) for low latency
+    branch: main               # adjust to your deployed branch
+    plan: starter             # NOTE: persistent disks require a paid plan.
+                              #       On the Free plan, remove the `disk:` block
+                              #       below (Sibyl SQLite will then live on
+                              #       ephemeral storage and reset on restart).
+    buildCommand: bash scripts/render-build.sh
+    startCommand: npm run render-start
+    healthCheckPath: /health   # GET /health -> 200 (see backend/src/routes/health.ts)
+    numInstances: 1            # required: a disk-backed service cannot scale out
+    envVars:
+      # --- App / build ---
+      - key: NODE_ENV
+        value: production
+      - key: VITE_API_BASE_URL   # baked into the frontend build; same-origin /api
+        value: /api
+      - key: APP_URL             # used in password-reset links; set to the deployed URL
+        sync: false
+
+      # --- Database / auth / AI (secrets) ---
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+
+      # --- Password-reset email (optional; defaults to console capture) ---
+      - key: EMAIL_PROVIDER
+        value: console
+      - key: EMAIL_FROM
+        value: no-reply@habitra.app
+      - key: PASSWORD_RESET_TOKEN_TTL_MINUTES
+        value: "60"
+
+      # --- Sibyl Memory (local-first, opt-OUT, Python bridge) ---
+      - key: SIBYL_ENABLED
+        value: "true"
+      - key: SIBYL_DB_PATH        # lives on the persistent disk (see disk: below)
+        value: /data/sibyl-memory.db
+      # SIBYL_PYTHON and SIBYL_BRIDGE_SCRIPT are intentionally left unset so the
+      # app uses its built-in defaults, which resolve correctly on Render:
+      #   SIBYL_PYTHON        = $BACKEND_ROOT/.venv/bin/python   (created in build)
+      #   SIBYL_BRIDGE_SCRIPT = $BACKEND_ROOT/scripts/sibyl_bridge.py
+
+      # --- Base + BEES (on-chain; live testnet) ---
+      - key: DEMO_CHAIN_MODE
+        value: "false"           # live reads against Base Sepolia
+      - key: BASE_RPC_URL
+        sync: false
+      - key: BASE_CHAIN_ID
+        value: "84532"
+      - key: BEES_TOKEN_ADDRESS
+        sync: false
+      - key: CHALLENGE_CONTRACT_ADDRESS
+        sync: false
+      - key: FAUCET_ADDRESS
+        sync: false
+      - key: ESCROW_RESOLVER_PRIVATE_KEY
+        sync: false
+      - key: FAUCET_DEPLOYER_PRIVATE_KEY
+        sync: false
+
+      # --- Virtuals ACP v2 (kept OFF; preserves the integration, no live calls) ---
+      - key: VIRTUALS_ACP_ENABLED
+        value: "false"
+      - key: VIRTUALS_EVM_SIGNER_PRIVATE_KEY
+        sync: false
+      - key: VIRTUALS_BUYER_EVM_SIGNER_PRIVATE_KEY
+        sync: false
+
+    # Persistent disk for the Sibyl SQLite database so memory survives deploys
+    # and restarts. Requires a paid plan (starter or above). Minimum size 1 GB.
+    disk:
+      name: habitra-sibyl
+      mountPath: /data
+      sizeGB: 1

@@ -1,8 +1,24 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import type { Address } from 'viem';
 
 import { NETWORK_ERROR_STATUS, api, isApiError } from '../lib/http';
 import { useAuth } from '../context/AuthContext';
 import type { BlockchainStatus, Wallet, WalletResponse } from '../lib/types';
+import { formatBeesAmount, readBeesBalance } from '../lib/wallet/bees';
+import {
+  FAUCET_CLAIM_LABEL,
+  claimBees,
+  claimBeesServer,
+  readFaucetClaimed,
+} from '../lib/wallet/faucet';
+import {
+  getInjectedProvider,
+  getWalletChainId,
+  isBaseSepolia,
+  isInjectedWalletAvailable,
+  readAuthorizedAccounts,
+  requestWalletAccounts,
+} from '../lib/wallet/injectedWallet';
 
 /**
  * Wallet page — surfaces the existing Base + BEES backend foundation.
@@ -34,6 +50,12 @@ function formatWhen(value: string): string {
   return parsed.toLocaleString();
 }
 
+/** `0x1234abcd…5678` — enough to recognise a hash, short enough to fit. */
+function shortHex(value: string): string {
+  if (value.length <= 14) return value;
+  return `${value.slice(0, 6)}…${value.slice(-4)}`;
+}
+
 function messageFor(error: unknown): string {
   if (!isApiError(error)) {
     return 'Something went wrong. Please try again.';
@@ -60,6 +82,18 @@ function modeBadgeClass(mode: BlockchainStatus['mode']): string {
   return 'badge';
 }
 
+/** EIP-1193 user-rejected: the wallet prompt was dismissed. */
+const USER_REJECTED_CODE = 4001;
+
+function walletMessageFor(error: unknown): string {
+  const code = (error as { code?: number } | null)?.code;
+  if (code === USER_REJECTED_CODE) {
+    return 'The request was rejected in your wallet.';
+  }
+  if (error instanceof Error && error.message) return error.message;
+  return 'Something went wrong while talking to your wallet.';
+}
+
 export default function Wallet() {
   const { user } = useAuth();
 
@@ -78,6 +112,42 @@ export default function Wallet() {
   const [banner, setBanner] = useState<{ kind: 'success' | 'error'; text: string } | null>(
     null,
   );
+
+  // --- Injected browser wallet (Phase 2) -----------------------------------
+  // Read-only: connect, show the address/network, and read the BEES balance.
+  // No transaction is ever constructed or broadcast here.
+  const [walletDetected, setWalletDetected] = useState<boolean | null>(null);
+  const [browserWallet, setBrowserWallet] = useState<{
+    account: Address | null;
+    chainId: number | null;
+  } | null>(null);
+  const [connecting, setConnecting] = useState(false);
+  const [browserError, setBrowserError] = useState('');
+
+  const [beesBalance, setBeesBalance] = useState<string | null>(null);
+  const [beesLoading, setBeesLoading] = useState(false);
+  const [beesError, setBeesError] = useState('');
+
+  // --- BEES faucet (Phase 4) ----------------------------------------------
+  // Claim 10 BEES once per wallet. Read-only until the user clicks; the actual
+  // on-chain write (claim()) lives in lib/wallet/faucet.ts and is signed by the
+  // user's own wallet. No private key is ever involved here.
+  const [faucetClaimed, setFaucetClaimed] = useState<boolean | null>(null);
+  const [claiming, setClaiming] = useState(false);
+  const [claimTxHash, setClaimTxHash] = useState<string | null>(null);
+  const [claimError, setClaimError] = useState('');
+
+  // --- Server-side BEES claim (Phase 5) -----------------------------------
+  // The PRIMARY onboarding path: a user pastes a public address, links it, and
+  // the backend distributes 10 BEES to it (no browser-wallet signature needed
+  // to RECEIVE). The backend signs claimFor() with its own faucet-owner key.
+  const [serverClaimed, setServerClaimed] = useState<boolean | null>(null);
+  const [serverClaiming, setServerClaiming] = useState(false);
+  const [serverClaimTxHash, setServerClaimTxHash] = useState<string | null>(null);
+  const [serverClaimError, setServerClaimError] = useState('');
+  const [linkedBeesBalance, setLinkedBeesBalance] = useState<string | null>(null);
+  const [linkedBeesLoading, setLinkedBeesLoading] = useState(false);
+  const [linkedBeesError, setLinkedBeesError] = useState('');
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -103,6 +173,315 @@ export default function Wallet() {
   useEffect(() => {
     void loadAll();
   }, [loadAll]);
+
+  /**
+   * Reflect the wallet's current state without prompting. `eth_accounts`
+   * returns only already-authorised accounts, so this is safe on page load.
+   */
+  const syncBrowserWallet = useCallback(async () => {
+    if (!isInjectedWalletAvailable()) {
+      setWalletDetected(false);
+      setBrowserWallet(null);
+      return;
+    }
+
+    setWalletDetected(true);
+
+    try {
+      const [accounts, chainId] = await Promise.all([
+        readAuthorizedAccounts(),
+        getWalletChainId(),
+      ]);
+      setBrowserWallet({ account: accounts[0] ?? null, chainId });
+    } catch (error) {
+      setBrowserWallet(null);
+      setBrowserError(walletMessageFor(error));
+    }
+  }, []);
+
+  useEffect(() => {
+    void syncBrowserWallet();
+  }, [syncBrowserWallet]);
+
+  // Keep the display honest if the user switches account or network in the
+  // wallet after this page rendered.
+  useEffect(() => {
+    const provider = getInjectedProvider();
+    if (!provider?.on) return undefined;
+
+    const onChange = () => void syncBrowserWallet();
+
+    provider.on('accountsChanged', onChange);
+    provider.on('chainChanged', onChange);
+
+    return () => {
+      provider.removeListener?.('accountsChanged', onChange);
+      provider.removeListener?.('chainChanged', onChange);
+    };
+  }, [syncBrowserWallet]);
+
+  /** Read the BEES balance once there is an account on Base Sepolia. */
+  useEffect(() => {
+    const account = browserWallet?.account;
+    const tokenAddress = status?.beesTokenAddress ?? null;
+
+    if (!account || !tokenAddress || !isBaseSepolia(browserWallet?.chainId ?? null)) {
+      setBeesBalance(null);
+      setBeesError('');
+      setBeesLoading(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+    setBeesLoading(true);
+    setBeesError('');
+
+    readBeesBalance(tokenAddress, account)
+      .then((baseUnits) => {
+        if (!cancelled) setBeesBalance(formatBeesAmount(baseUnits));
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setBeesBalance(null);
+          setBeesError('Unable to read your BEES balance.');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setBeesLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [browserWallet, status?.beesTokenAddress]);
+
+  /** Read whether this wallet has already claimed from the faucet. */
+  useEffect(() => {
+    const account = browserWallet?.account;
+    const faucetAddress = status?.faucetAddress ?? null;
+
+    if (!account || !faucetAddress || !isBaseSepolia(browserWallet?.chainId ?? null)) {
+      setFaucetClaimed(null);
+      setClaimError('');
+      return undefined;
+    }
+
+    let cancelled = false;
+    setFaucetClaimed(null);
+    readFaucetClaimed(faucetAddress, account)
+      .then((claimed) => {
+        if (!cancelled) setFaucetClaimed(claimed);
+      })
+      .catch(() => {
+        if (!cancelled) setFaucetClaimed(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [browserWallet, status?.faucetAddress]);
+
+  /**
+   * Server-side claim status for the LINKED public address (no browser wallet
+   * needed). Reads the on-chain hasClaimed flag so the UI can show the
+   * already-claimed state before the user clicks.
+   */
+  useEffect(() => {
+    const address = wallet?.address;
+    const faucetAddress = status?.faucetAddress ?? null;
+
+    if (!address || !faucetAddress) {
+      setServerClaimed(null);
+      setServerClaimError('');
+      return undefined;
+    }
+
+    let cancelled = false;
+    setServerClaimed(null);
+    readFaucetClaimed(faucetAddress, address as Address)
+      .then((claimed) => {
+        if (!cancelled) setServerClaimed(claimed);
+      })
+      .catch(() => {
+        if (!cancelled) setServerClaimed(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [wallet?.address, status?.faucetAddress]);
+
+  /** Read the BEES balance of the linked public address (read-only, any address). */
+  useEffect(() => {
+    const address = wallet?.address;
+    const tokenAddress = status?.beesTokenAddress ?? null;
+
+    if (!address || !tokenAddress) {
+      setLinkedBeesBalance(null);
+      setLinkedBeesLoading(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+    setLinkedBeesLoading(true);
+    setLinkedBeesError('');
+    readBeesBalance(tokenAddress, address as Address)
+      .then((baseUnits) => {
+        if (!cancelled) setLinkedBeesBalance(formatBeesAmount(baseUnits));
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setLinkedBeesBalance(null);
+          setLinkedBeesError('Unable to read your BEES balance.');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLinkedBeesLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [wallet?.address, status?.beesTokenAddress]);
+
+  /** Prompt the wallet for access (`eth_requestAccounts`). */
+  async function connectBrowserWallet() {
+    setConnecting(true);
+    setBrowserError('');
+
+    try {
+      const accounts = await requestWalletAccounts();
+      if (accounts.length === 0) {
+        setBrowserError('No account was selected in your wallet.');
+      }
+      await syncBrowserWallet();
+    } catch (error) {
+      setBrowserError(walletMessageFor(error));
+    } finally {
+      setConnecting(false);
+    }
+  }
+
+  /**
+   * Claim 10 BEES from the faucet. Simulates, requests the wallet signature,
+   * waits for the receipt, then refreshes the BEES balance and records the tx.
+   * All guards (connected, Base Sepolia, faucet configured) are re-checked here
+   * so a stale render can never broadcast an unexpected transaction.
+   */
+  async function claimFromFaucet() {
+    setClaiming(true);
+    setClaimError('');
+    setBanner(null);
+
+    const account = browserWallet?.account;
+    const faucetAddress = status?.faucetAddress ?? null;
+
+    if (!account) {
+      setClaimError('Connect your wallet to claim BEES.');
+      setClaiming(false);
+      return;
+    }
+    if (!isBaseSepolia(browserWallet?.chainId ?? null)) {
+      setClaimError(`Switch your wallet to Base Sepolia (${DEFAULT_CHAIN_ID}) to claim BEES.`);
+      setClaiming(false);
+      return;
+    }
+    if (!faucetAddress) {
+      setClaimError('The BEES faucet is not configured on the backend.');
+      setClaiming(false);
+      return;
+    }
+
+    try {
+      const hash = await claimBees(faucetAddress, account);
+      setClaimTxHash(hash);
+      setFaucetClaimed(true);
+
+      // Refresh the BEES balance so the UI reflects the newly claimed funds.
+      const tokenAddress = status?.beesTokenAddress ?? null;
+      if (tokenAddress) {
+        try {
+          const balance = await readBeesBalance(tokenAddress, account);
+          setBeesBalance(formatBeesAmount(balance));
+        } catch {
+          // Balance refresh is best-effort; the claim itself already succeeded.
+        }
+      }
+
+      setBanner({ kind: 'success', text: `Claimed ${FAUCET_CLAIM_LABEL} from the faucet.` });
+    } catch (error) {
+      const code = (error as { code?: number } | null)?.code;
+      if (code === USER_REJECTED_CODE) {
+        setClaimError('The claim was rejected in your wallet. Nothing was sent.');
+      } else {
+        const msg =
+          (error as { shortMessage?: string } | null)?.shortMessage
+          || (error instanceof Error ? error.message : '');
+        if (/already claimed/i.test(msg)) {
+          setFaucetClaimed(true);
+          setClaimError('You have already claimed BEES from this faucet.');
+        } else if (/faucet empty/i.test(msg)) {
+          setClaimError('The faucet is out of BEES. Please let the demo admin know.');
+        } else if (msg) {
+          setClaimError(msg);
+        } else {
+          setClaimError('Something went wrong while claiming BEES. Please try again.');
+        }
+      }
+    } finally {
+      setClaiming(false);
+    }
+  }
+
+  /**
+   * Server-side claim: ask the backend to send 10 BEES to the linked public
+   * address. No browser-wallet signature is required to receive the BEES — the
+   * backend signs claimFor() with its own faucet-owner key. Re-checks the
+   * linked address is present, then maps server responses to UI states
+   * (pending / success+txHash / already-claimed / error).
+   */
+  async function claimBeesFromServer() {
+    setServerClaiming(true);
+    setServerClaimError('');
+    setBanner(null);
+
+    const address = wallet?.address;
+    if (!address) {
+      setServerClaimError('Link a public wallet address first.');
+      setServerClaiming(false);
+      return;
+    }
+
+    try {
+      const result = await claimBeesServer(address);
+      setServerClaimTxHash(result.txHash);
+      setServerClaimed(true);
+
+      // Refresh the linked address BEES balance so the UI reflects the funds.
+      const tokenAddress = status?.beesTokenAddress ?? null;
+      if (tokenAddress) {
+        try {
+          const balance = await readBeesBalance(tokenAddress, address as Address);
+          setLinkedBeesBalance(formatBeesAmount(balance));
+        } catch {
+          // Best-effort; the claim already succeeded.
+        }
+      }
+
+      setBanner({ kind: 'success', text: `Claimed ${FAUCET_CLAIM_LABEL} from the faucet.` });
+    } catch (error) {
+      if (isApiError(error) && error.status === 409) {
+        setServerClaimed(true);
+        setServerClaimError('This address has already claimed BEES from the faucet.');
+      } else if (isApiError(error) && error.status === 403) {
+        setServerClaimError('You can only claim for the wallet linked to your account.');
+      } else {
+        setServerClaimError(messageFor(error));
+      }
+    } finally {
+      setServerClaiming(false);
+    }
+  }
 
   async function connectWallet(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -172,6 +551,123 @@ export default function Wallet() {
       )}
 
       <section className="card">
+        <h2 className="card__title">Browser wallet</h2>
+
+        {browserError && <div className="alert alert--error">{browserError}</div>}
+
+        {walletDetected === null && (
+          <p className="habits__muted">Checking for a browser wallet…</p>
+        )}
+
+        {walletDetected === false && (
+          <p className="habits__muted">
+            No browser wallet detected. Install MetaMask or another EIP-1193
+            wallet extension, then reload this page to connect.
+          </p>
+        )}
+
+        {walletDetected === true && !browserWallet?.account && (
+          <>
+            <p className="habits__muted">
+              Connect your wallet to see your BEES balance on{' '}
+              {chainName(DEFAULT_CHAIN_ID)} ({DEFAULT_CHAIN_ID}).
+            </p>
+            <div className="habits__form-actions">
+              <button
+                className="btn btn--primary"
+                type="button"
+                onClick={() => void connectBrowserWallet()}
+                disabled={connecting}
+              >
+                {connecting ? 'Connecting…' : 'Connect wallet'}
+              </button>
+            </div>
+          </>
+        )}
+
+        {browserWallet?.account && (
+          <>
+            <div className="wallet__detail">
+              <p className="wallet__label">Connected address</p>
+              <p className="wallet__address">{browserWallet.account}</p>
+
+              <p className="wallet__label">Network</p>
+              <p className="wallet__value">
+                {browserWallet.chainId === null
+                  ? 'Unknown'
+                  : `${chainName(browserWallet.chainId)} (${browserWallet.chainId})`}
+              </p>
+            </div>
+
+            {wallet
+              && browserWallet.account.toLowerCase() !== wallet.address.toLowerCase() && (
+                <p className="habits__muted">
+                  This browser wallet is not the address linked to your Habitra
+                  account.
+                </p>
+              )}
+
+            {!isBaseSepolia(browserWallet.chainId) && (
+              <div className="alert alert--error">
+                Wrong network. Switch your wallet to {chainName(DEFAULT_CHAIN_ID)}{' '}
+                ({DEFAULT_CHAIN_ID}) to use Habitra. Habitra will not switch
+                networks for you.
+              </div>
+            )}
+
+            {isBaseSepolia(browserWallet.chainId) && (
+              <>
+              <div className="wallet__detail">
+                <p className="wallet__label">BEES balance</p>
+                {!status?.beesTokenAddress ? (
+                  <p className="habits__muted">
+                    BEES token address is not configured on the backend.
+                  </p>
+                ) : beesLoading ? (
+                  <p className="habits__muted">Loading BEES balance…</p>
+                ) : beesError ? (
+                  <p className="form__error-text">{beesError}</p>
+                ) : (
+                  <p className="wallet__value">{beesBalance ?? '0'} BEES</p>
+                )}
+              </div>
+
+              {status?.faucetAddress ? (
+                <div className="wallet__detail">
+                  <p className="wallet__label">BEES faucet</p>
+                  {faucetClaimed === null ? (
+                    <p className="habits__muted">Checking claim status…</p>
+                  ) : faucetClaimed ? (
+                    <p className="wallet__value">
+                      You have already claimed {FAUCET_CLAIM_LABEL}.
+                    </p>
+                  ) : (
+                    <div className="habits__form-actions">
+                      <button
+                        className="btn btn--primary"
+                        type="button"
+                        onClick={() => void claimFromFaucet()}
+                        disabled={claiming}
+                      >
+                        {claiming ? 'Claiming…' : `Claim ${FAUCET_CLAIM_LABEL}`}
+                      </button>
+                    </div>
+                  )}
+                  {claimTxHash && (
+                    <p className="habits__muted">Claimed! Tx {shortHex(claimTxHash)}</p>
+                  )}
+                  {claimError && <div className="alert alert--error">{claimError}</div>}
+                </div>
+              ) : (
+                <p className="habits__muted">BEES faucet is not configured.</p>
+              )}
+              </>
+            )}
+          </>
+        )}
+      </section>
+
+      <section className="card">
         <h2 className="card__title">Connected wallet</h2>
 
         {loading && <p className="habits__muted">Loading your wallet…</p>}
@@ -205,6 +701,56 @@ export default function Wallet() {
               <p className="wallet__label">Linked</p>
               <p className="wallet__value">{formatWhen(wallet.createdAt)}</p>
             </div>
+
+            {/*
+              PRIMARY BEES onboarding. The user pasted a public address above;
+              the backend now distributes 10 BEES to it. No browser wallet and no
+              user signature is required to RECEIVE BEES — signing is still
+              required later when the user actually stakes (approve + lock).
+            */}
+            {status?.faucetAddress ? (
+              <div className="wallet__detail">
+                <p className="wallet__label">BEES balance</p>
+                {!status?.beesTokenAddress ? (
+                  <p className="habits__muted">
+                    BEES token address is not configured on the backend.
+                  </p>
+                ) : linkedBeesLoading ? (
+                  <p className="habits__muted">Loading BEES balance…</p>
+                ) : linkedBeesError ? (
+                  <p className="form__error-text">{linkedBeesError}</p>
+                ) : (
+                  <p className="wallet__value">{linkedBeesBalance ?? '0'} BEES</p>
+                )}
+
+                <p className="wallet__label">BEES faucet</p>
+                {serverClaimed === null ? (
+                  <p className="habits__muted">Checking claim status…</p>
+                ) : serverClaimed ? (
+                  <p className="wallet__value">
+                    You have already claimed {FAUCET_CLAIM_LABEL}.
+                  </p>
+                ) : (
+                  <div className="habits__form-actions">
+                    <button
+                      className="btn btn--primary"
+                      type="button"
+                      onClick={() => void claimBeesFromServer()}
+                      disabled={serverClaiming}
+                    >
+                      {serverClaiming ? 'Sending BEES…' : `Claim ${FAUCET_CLAIM_LABEL}`}
+                    </button>
+                  </div>
+                )}
+
+                {serverClaimTxHash && (
+                  <p className="habits__muted">Claimed! Tx {shortHex(serverClaimTxHash)}</p>
+                )}
+                {serverClaimError && <div className="alert alert--error">{serverClaimError}</div>}
+              </div>
+            ) : (
+              <p className="habits__muted">BEES faucet is not configured.</p>
+            )}
 
             {!formOpen && (
               <button

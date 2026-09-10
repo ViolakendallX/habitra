@@ -2,6 +2,7 @@
   "name": "habitra-backend",
   "private": true,
   "version": "0.1.0",
+  "license": "MIT",
   "type": "module",
   "engines": {
     "node": ">=20.19"
@@ -9,9 +10,11 @@
   "scripts": {
     "dev": "tsx watch --env-file-if-exists=.env src/index.ts",
     "build": "tsc",
+    "build:frontend": "cd ../frontend && npm install && npm run build",
     "start": "node --env-file-if-exists=.env dist/index.js",
     "typecheck": "tsc --noEmit",
     "prisma:generate": "prisma generate",
+    "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:validate": "prisma validate",
     "test:sibyl": "tsx scripts/sibyl_memory_test.ts",
     "test:habit_memory": "node --env-file-if-exists=.env node_modules/tsx/dist/cli.mjs scripts/habit_memory_test.ts",

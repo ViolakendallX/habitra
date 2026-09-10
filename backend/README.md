@@ -2,14 +2,24 @@
 
 Node.js + Express + TypeScript backend for Habitra.
 
-Foundation, database groundwork, and authentication: a health-check route, the
-`User` model and its first migration, registration (`POST /api/auth/register`),
-login (`POST /api/auth/login`), a JWT session layer with `GET /api/auth/me` and
-`POST /api/auth/logout`, the reusable `requireAuth` middleware, habit creation
-(`POST /api/habits`), and habit listing (`GET /api/habits`).
+The API implements the full accountability loop: authentication, habit tracking,
+analytics, the Gemini-backed agent, **Sibyl Memory**, challenges, wallet linkage,
+and Base on-chain escrow reconciliation.
 
-Editing, deleting, pausing, completing, and all other habit features are not
-implemented yet.
+| Concern | Where |
+| --- | --- |
+| Authentication (JWT cookie), password reset | `src/routes/auth.ts`, `src/routes/passwordReset.ts` |
+| Habits, completions, history | `src/routes/habits.ts` |
+| Analytics | `src/routes/analytics.ts`, `src/services/analytics.ts` |
+| AI agent (Gemini) + Sibyl memory context | `src/routes/agent.ts`, `src/services/agent.ts` |
+| **Sibyl Memory** (typed service) | `src/services/memory.ts`, `src/lib/sibylBridge.ts` |
+| Challenges, evaluation, escrow | `src/routes/challenges.ts`, `src/services/challenges.ts`, `src/services/challengeEscrow.ts` |
+| Wallet + on-chain reads/reconciliation | `src/routes/wallet.ts`, `src/routes/blockchain.ts`, `src/services/blockchain.ts` |
+| Virtuals ACP v2 intervention transport | `src/services/virtuals.ts`, `virtualsAcp.ts`, `virtualsProvider.ts` |
+
+Mounted routes (`src/app.ts`): `/health`, `/api/auth`, `/api/habits`,
+`/api/challenges`, `/api/analytics`, `/api/agent`, `/api/wallet`,
+`/api/blockchain`, and `/api/dev` (development only).
 
 ## Requirements
 
@@ -72,8 +82,19 @@ Response `200 OK`:
 
 ## Database
 
-Prisma is configured against PostgreSQL. Two models exist and have been migrated:
-`User`, used by authentication, and `Habit`, created through `POST /api/habits`.
+Prisma is configured against PostgreSQL. The following models exist and have
+been migrated:
+
+| Model | Purpose |
+| --- | --- |
+| `User` | Authentication and account identity |
+| `Habit` | A tracked habit (frequency, target, preferred time, status) |
+| `HabitCompletion` | One row per habit per day (completed / missed, miss reason) |
+| `PasswordResetToken` | Password-reset tokens |
+| `Challenge` | A commitment with dates, stake and outcome |
+| `ChallengeHabit` | Links a challenge to the habits it covers |
+| `Wallet` | A user's linked on-chain address (with `chainId`) |
+| `Transaction` | On-chain economic events (`FUND` / `CLAIM` / `PENALTY`) and confirmation state |
 
 | File                    | Purpose                                                  |
 | ----------------------- | -------------------------------------------------------- |
@@ -289,30 +310,84 @@ src/
 │   ├── jwt.ts         # JWT signing/verification + cookie options
 │   └── select.ts      # Safe public-user shape and Prisma select
 ├── config/
-│   └── env.ts         # Typed environment access (PORT, DATABASE_URL, JWT_SECRET)
+│   └── env.ts         # Typed environment access (incl. Sibyl, Virtuals, Base)
+├── contracts/
+│   └── abi.ts         # Generated `as const` ABIs (BEES, HabitraChallengeEscrow)
 ├── db/
 │   └── prisma.ts      # Shared Prisma client (driver adapter: PrismaPg)
+├── lib/
+│   └── sibylBridge.ts # Node -> Python transport for Sibyl Memory
 ├── middleware/
 │   └── auth.ts        # Reusable requireAuth middleware
-└── routes/
-    ├── auth.ts        # register, login, me, and logout
-    ├── habits.ts      # GET (list) and POST (create) /api/habits
-    └── health.ts      # GET /health
+├── routes/
+│   ├── agent.ts       # /api/agent — recommendation + outcome recording
+│   ├── analytics.ts   # /api/analytics
+│   ├── auth.ts        # register, login, me, and logout
+│   ├── blockchain.ts  # /api/blockchain — chain status
+│   ├── challenges.ts  # /api/challenges — lifecycle + stake
+│   ├── dev.ts         # /api/dev — development only
+│   ├── habits.ts      # /api/habits — CRUD, complete, miss, history
+│   ├── health.ts      # GET /health
+│   ├── passwordReset.ts
+│   └── wallet.ts      # /api/wallet — linked wallet
+└── services/
+    ├── agent.ts              # Gemini reasoning + agent context
+    ├── analytics.ts
+    ├── blockchain.ts
+    ├── blockchainPersistence.ts
+    ├── challengeEscrow.ts    # Applies the economic consequence
+    ├── challenges.ts         # Sole authority for pass/fail
+    ├── memory.ts             # Typed Sibyl Memory service
+    ├── virtuals.ts
+    ├── virtualsAcp.ts        # ACP v2 transport
+    └── virtualsProvider.ts   # ACP v2 seller listener
 
 prisma/
-├── schema.prisma      # Datasource + generator + User and Habit models
-└── migrations/
-    ├── 20260904194003_init/migration.sql      # Creates the User table
-    ├── 20260904225128_add_habit/migration.sql # Creates the Habit table
-    └── migration_lock.toml
+├── schema.prisma      # Datasource + generator + all models
+└── migrations/        # Generated migrations, committed to version control
 prisma7.config.ts      # Prisma 7 configuration
+scripts/               # Test suites and the Sibyl Python bridge
 ```
 
-## Planned growth (later phases)
+## Services
 
-- `prisma/schema.prisma` — further models and relations (HabitCompletion, Challenge, …)
-- `src/routes/` — the rest of `/api/habits` (fetch one, edit, delete, pause/resume,
-  complete, miss, history) plus `/api/analytics`, `/api/agent`, `/api/memory`,
-  `/api/challenges`, `/api/wallet`, `/api/blockchain`, `/api/telegram` (PRD section 29)
-- `src/middleware/` — validation and further request guards (authentication exists)
-- `src/services/` — analytics, agent, Sibyl Memory, blockchain
+- **`services/analytics.ts`** — completion rates, streaks, most/least consistent habits, common miss reasons.
+- **`services/agent.ts`** — builds the agent context (PostgreSQL facts **plus Sibyl memories**), calls Gemini, validates the response, and persists the recommendation to Sibyl.
+- **`services/memory.ts`** — the only place the app talks to Sibyl. Handles feature flagging, per-user tenant isolation, secret refusal, and failure-safe degradation.
+- **`services/challenges.ts`** — challenge lifecycle and the **sole** authority for pass/fail.
+- **`services/challengeEscrow.ts`** — applies the economic consequence; never changes the verdict.
+- **`services/blockchain.ts` / `blockchainPersistence.ts`** — viem reads, transaction confirmation and reconciliation.
+- **`services/virtuals.ts` / `virtualsAcp.ts` / `virtualsProvider.ts`** — Virtuals ACP v2 intervention transport and seller listener.
+
+## Sibyl Memory
+
+Memory is enabled by default (`SIBYL_ENABLED` is opt-*out*) and is failure-safe:
+a memory outage is logged and swallowed, never propagated. The most important
+call sites are:
+
+| Direction | Call site |
+| --- | --- |
+| Write completion/miss event | `src/routes/habits.ts:557` |
+| Write habit behaviour profile | `src/routes/habits.ts:566` |
+| Write recommendation outcome | `src/services/agent.ts:566-573` |
+| Merge accept/helpful outcome | `src/routes/agent.ts:97` |
+| Read memories into agent context | `src/services/agent.ts:474-475`, `458`, `515-521` |
+
+See the [root README](../README.md) for why memory is load-bearing.
+
+## Testing
+
+```bash
+npm run typecheck
+npm run test:regression_api
+npm run test:challenges_service && npm run test:challenges_api
+npm run test:wallet_api && npm run test:blockchain_persistence
+npm run test:challenge_escrow_confirm
+npm run test:agent && npm run test:sibyl && npm run test:habit_memory
+npm run test:learning_loop
+npm run test:virtuals_intervention && npm run test:virtuals_acp_v2 && npm run test:virtuals_provider
+```
+
+`npm run test:challenge_escrow` asserts `DEMO_CHAIN_MODE=true` and therefore
+fails under a live configuration. Run it with `DEMO_CHAIN_MODE=true`, or use
+`test:challenge_escrow_confirm` for the live path (48/48).

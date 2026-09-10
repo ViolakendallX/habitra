@@ -1,0 +1,10 @@
+{
+  "name": "habitra",
+  "private": true,
+  "version": "0.1.0",
+  "license": "MIT",
+  "scripts": {
+    "render-build": "npm --prefix backend install && npm --prefix backend run prisma:generate && npm --prefix frontend install && npm --prefix frontend run build && npm --prefix backend run build",
+    "render-start": "npm --prefix backend run start"
+  }
+}

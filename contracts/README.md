@@ -1,8 +1,14 @@
 # Habitra on-chain layer (Base Sepolia + BEES)
 
-> **Status: implemented, compiled and unit-tested locally. NOT deployed.**
-> No contract has been deployed to Base Sepolia (or any other network). No
-> private key is stored, requested or referenced anywhere in this repository.
+> **Status: DEPLOYED and verified live on Base Sepolia (chain id 84532).**
+> A stake has been locked on-chain. **No settlement has been executed** — see
+> [§7 Deployment](#7-deployment). No private key is stored, requested or
+> referenced anywhere in this repository.
+
+| Contract | Address |
+| --- | --- |
+| **BEES** (ERC-20, "Habitra BEES", 18 dp) | `0x43e67b33248e3262fe12d3ae826850936a2d1cd9` |
+| **HabitraChallengeEscrow** | `0x3211fe09b5ad90a40d4a21f779d07c1a7e0c3c4f` |
 
 This directory contains the minimal Base + BEES on-chain layer for Habitra: two
 Solidity contracts, their tests, a deployment script that is **never executed
@@ -155,19 +161,19 @@ emits an event, and every settlement is mirrored into the off-chain
 cd contracts
 npm install          # hardhat, viem, @openzeppelin/contracts
 npm run compile      # solc 0.8.28, optimizer on
-npm test             # 15 contract tests on the in-process Hardhat network
+npm test             # 16 contract tests on the in-process Hardhat network
 node scripts/export-abis.js   # regenerate TS ABIs after a contract change
 ```
 
 `npm test` runs entirely locally: no RPC calls, no Base Sepolia connection, no
 deployment.
 
-## 7. Deployment — configured but NOT performed
+## 7. Deployment
 
-`scripts/deploy.js` is provided for review only. It fails closed: it refuses to
-run unless the target chain is Base Sepolia (84532) and `BASE_RPC_URL`,
-`DEPLOYER_PRIVATE_KEY` and `TREASURY_ADDRESS` are all present in the
-environment. **It has never been executed.** When an operator chooses to deploy:
+Both contracts are **deployed to Base Sepolia (84532)** and have been verified
+against a live RPC. The deploy script fails closed: it refuses to run unless the
+target chain is Base Sepolia (84532) and `BASE_RPC_URL`, `DEPLOYER_PRIVATE_KEY`
+and `TREASURY_ADDRESS` are all present in the environment.
 
 ```bash
 BASE_RPC_URL=https://sepolia.base.org \
@@ -176,16 +182,36 @@ TREASURY_ADDRESS=0x... \
 npm run deploy:base-sepolia
 ```
 
-Then put the two printed addresses into `backend/.env`:
+The two printed addresses go into `backend/.env`:
 
 ```
-BEES_TOKEN_ADDRESS=0x...
-CHALLENGE_CONTRACT_ADDRESS=0x...
+BEES_TOKEN_ADDRESS=0x43e67b33248e3262fe12d3ae826850936a2d1cd9
+CHALLENGE_CONTRACT_ADDRESS=0x3211fe09b5ad90a40d4a21f779d07c1a7e0c3c4f
 ```
 
-`DEMO_CHAIN_MODE` stays `true` by default in development, so nothing on the
-backend changes behaviour until those addresses are set **and** demo mode is
-explicitly turned off.
+`DEMO_CHAIN_MODE=false` turns on real on-chain reads and reconciliation. With it
+`true`, the backend simulates settlement and makes no chain calls.
+
+### Verified on-chain activity
+
+Exactly three transactions have ever touched this deployment:
+
+| Step | Transaction | Detail |
+| --- | --- | --- |
+| Mint | `0xf473926151989e969ec542fbef218a8fcec0297ee1f77457817df77e28a52870` | 5 BEES to `0xB340a31D33D361CC9809B3C8D26D03F088A2e20e` |
+| Approve | `0x570c29f958ef75ec19d60fcc09b8772c66dd4bb6b2c97911b9d10329efbd73ec` | Block 46581162 — escrow approved for 5 BEES |
+| Lock | `0x7bafb7c21c9e7c0a8d26a04fca1385c944b625c63363d1c2854ba5a88efb91c3` | Block 46581419 — `lock()` (selector `0x57b2d76f`), status success |
+
+**5 BEES are locked and the escrow custodies them.** Commitment id `1`:
+`user` `0xB340a31D33D361CC9809B3C8D26D03F088A2e20e`, `amount` 5 BEES,
+`endsAt` `2026-09-15T00:00:00Z`, **`settled = false`**, `isPending = true`.
+
+### Settlement has NOT occurred
+
+`settle()` has never been executed against this deployment. **No stake has been
+returned and no stake has been slashed.** Settlement is implemented and covered
+by contract tests, but it has not been run on-chain. Do not claim any reward or
+penalty settlement.
 
 ## 8. Generated ABIs
 

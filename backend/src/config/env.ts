@@ -102,11 +102,22 @@ export const env = {
   beesTokenAddress: process.env.BEES_TOKEN_ADDRESS ?? '',
   // ChallengeRewards contract address on Base Sepolia (set after deployment).
   challengeContractAddress: process.env.CHALLENGE_CONTRACT_ADDRESS ?? '',
+  // Habitra BEES faucet address on Base Sepolia (set after deployment). This is
+  // a PUBLIC contract address — never a secret. Empty until deployed.
+  faucetAddress: process.env.FAUCET_ADDRESS ?? '',
   // Resolver/signer key used ONLY to call HabitraChallengeEscrow.settle() when
   // DEMO_CHAIN_MODE=false. Read from the environment at run time; never written
   // to disk by this app, never logged, never sent to any client. Empty by
   // default, which disables on-chain settlement (there is simply no signer).
   escrowResolverPrivateKey: process.env.ESCROW_RESOLVER_PRIVATE_KEY ?? '',
+  // Faucet/deployer key used ONLY to call HabitraBeesFaucet.claimFor() — the
+  // server-side distribution of already-funded BEES to a pasted public address —
+  // when DEMO_CHAIN_MODE=false. This is the faucet owner key (set at deploy
+  // time); it is read from the environment at run time, never written to disk
+  // by this app, never logged, never sent to any client. The contract only ever
+  // lets this key transfer 10 BEES per address from the faucet's own funding —
+  // it cannot mint BEES. Empty by default (no server-side claims).
+  faucetDeployerPrivateKey: process.env.FAUCET_DEPLOYER_PRIVATE_KEY ?? '',
 } as const;
 
 export const isProduction = env.nodeEnv === 'production';

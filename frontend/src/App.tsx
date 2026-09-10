@@ -1,10 +1,11 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 
 import { AuthProvider } from './context/AuthContext';
 import { NotificationProvider } from './context/NotificationContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Navigation from './components/Navigation';
+import AuthLayout from './components/AuthLayout';
 
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -43,10 +44,38 @@ export default function App() {
         <NotificationProvider>
           <Routes>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
-            <Route path="/forgot-password" element={<ForgotPassword />} />
-            <Route path="/reset-password" element={<ResetPassword />} />
+            <Route
+              path="/login"
+              element={
+                <AuthLayout>
+                  <Login />
+                </AuthLayout>
+              }
+            />
+            <Route
+              path="/register"
+              element={
+                <AuthLayout>
+                  <Register />
+                </AuthLayout>
+              }
+            />
+            <Route
+              path="/forgot-password"
+              element={
+                <AuthLayout>
+                  <ForgotPassword />
+                </AuthLayout>
+              }
+            />
+            <Route
+              path="/reset-password"
+              element={
+                <AuthLayout>
+                  <ResetPassword />
+                </AuthLayout>
+              }
+            />
             <Route
               path="/dashboard"
               element={
@@ -120,8 +149,23 @@ export default function App() {
  * page content and leaves the page to render its own <main className="shell">.
  * Only used inside ProtectedRoute, so the nav never appears on the public auth
  * pages.
+ *
+ * The dark / near-black + lavender theme is scoped here: flipping
+ * `body[data-theme]` on mount (and clearing it on unmount) repaints the navbar,
+ * the notification bell, and every protected page through the token overrides in
+ * global.css. The public auth pages render outside this layout, so they stay
+ * light. The change is fully reversible — sign out (or hit a public route) and
+ * the attribute is deleted, returning the light theme.
  */
 function AppLayout({ children }: { children: ReactNode }) {
+  useEffect(() => {
+    document.body.dataset.theme = 'dark';
+
+    return () => {
+      delete document.body.dataset.theme;
+    };
+  }, []);
+
   return (
     <>
       <Navigation />

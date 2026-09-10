@@ -342,7 +342,44 @@ export interface BlockchainStatus {
   rpcUrl: string | null;
   beesTokenAddress: string | null;
   challengeContractAddress: string | null;
+  faucetAddress: string | null;
   note: string;
   defaultChainId: number;
   supportedChainIds: number[];
+}
+
+/**
+ * The call descriptor the backend hands back when the user — not the backend —
+ * must sign an escrow write. Mirrors the backend's `EscrowContractCall`.
+ */
+export interface EscrowContractCall {
+  address: string;
+  functionName: 'lock' | 'settle';
+  args: Array<string | number | boolean>;
+  note: string;
+}
+
+/**
+ * Payload of POST /api/challenges/:challengeId/stake and
+ * POST /api/challenges/:challengeId/escrow/confirm.
+ *
+ * Mirrors the backend's `EscrowResult`. The frontend never interprets this to
+ * decide a verdict — it only reads `contractCall` to build the user-signed
+ * transaction and `txHash` to display what was confirmed on-chain.
+ */
+export interface StakeEscrowResult {
+  ok: boolean;
+  mode: string;
+  simulated: boolean;
+  challengeId: string;
+  duplicate: boolean;
+  txHash: string | null;
+  commitmentId: string | null;
+  contractCall: EscrowContractCall | null;
+  code: string;
+  message: string;
+}
+
+export interface StakeEscrowResponse {
+  escrow: StakeEscrowResult;
 }

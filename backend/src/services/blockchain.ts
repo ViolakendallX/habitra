@@ -28,6 +28,7 @@ export interface BlockchainConfig {
   rpcUrl: string | null;
   beesTokenAddress: `0x${string}` | null;
   challengeContractAddress: `0x${string}` | null;
+  faucetAddress: `0x${string}` | null;
 }
 
 export type BlockchainMode = 'demo' | 'live' | 'unconfigured';
@@ -38,6 +39,7 @@ export interface BlockchainStatus {
   rpcUrl: string | null;
   beesTokenAddress: `0x${string}` | null;
   challengeContractAddress: `0x${string}` | null;
+  faucetAddress: `0x${string}` | null;
   note: string;
 }
 
@@ -53,6 +55,7 @@ export function getBlockchainConfig(): BlockchainConfig {
     challengeContractAddress: env.challengeContractAddress
       ? (env.challengeContractAddress as `0x${string}`)
       : null,
+    faucetAddress: env.faucetAddress ? (env.faucetAddress as `0x${string}`) : null,
   };
 }
 
@@ -152,6 +155,77 @@ export function getWalletClient() {
 }
 
 /**
+ * Returns a viem WalletClient for the BEES faucet owner on Base Sepolia when the
+ * backend is properly configured AND FAUCET_DEPLOYER_PRIVATE_KEY is present;
+ * otherwise returns null. This client signs `HabitraBeesFaucet.claimFor()` to
+ * distribute already-funded BEES to a pasted public address (server-side
+ * onboarding) — it can only transfer the faucet's own supply, never mint BEES.
+ *
+ * Same safety contract as getWalletClient(): the key comes only from the
+ * environment at run time; it is never logged, never persisted and never
+ * exposed to a client. The warnings deliberately do not reveal whether a key
+ * exists beyond "missing".
+ */
+/**
+ * viem expects a `0x`-prefixed private key. Deployment scripts store the key
+ * with the prefix, but an operator may paste it without one, so accept both
+ * forms. Returns null when the value cannot possibly be a key, and never echoes
+ * the value itself.
+ */
+function normalizePrivateKey(value: string): `0x${string}` | null {
+  const trimmed = value.trim();
+  const hex = trimmed.startsWith('0x') ? trimmed.slice(2) : trimmed;
+  if (!/^[0-9a-fA-F]{64}$/.test(hex)) return null;
+  return `0x${hex}`;
+}
+
+export function getFaucetWalletClient() {
+  if (env.demoChainMode) {
+    console.warn(
+      '[blockchain] DEMO_CHAIN_MODE=true — no faucet signing client is created. ' +
+        'Server-side BEES distribution is disabled.',
+    );
+    return null;
+  }
+  if (!env.baseRpcUrl) {
+    console.warn(
+      '[blockchain] BASE_RPC_URL is not set — no faucet signing client available.',
+    );
+    return null;
+  }
+  if (!env.faucetDeployerPrivateKey) {
+    console.warn(
+      '[blockchain] FAUCET_DEPLOYER_PRIVATE_KEY is not set — no faucet signing ' +
+        'client available, so server-side BEES distribution cannot be performed.',
+    );
+    return null;
+  }
+
+  const key = normalizePrivateKey(env.faucetDeployerPrivateKey);
+  if (!key) {
+    console.warn(
+      '[blockchain] FAUCET_DEPLOYER_PRIVATE_KEY is not a usable EVM private key — ' +
+        'no faucet signing client available.',
+    );
+    return null;
+  }
+
+  try {
+    return createWalletClient({
+      account: privateKeyToAccount(key),
+      chain: baseSepolia,
+      transport: http(env.baseRpcUrl),
+    });
+  } catch {
+    console.warn(
+      '[blockchain] FAUCET_DEPLOYER_PRIVATE_KEY is not a usable EVM private key — ' +
+        'no faucet signing client available.',
+    );
+    return null;
+  }
+}
+
+/**
  * Human-readable status used by diagnostics/health and as the "clearly labeled"
  * demo-mode stub. Pure: performs no network I/O.
  */
@@ -164,6 +238,7 @@ export function getBlockchainStatus(): BlockchainStatus {
       rpcUrl: config.rpcUrl,
       beesTokenAddress: null,
       challengeContractAddress: null,
+      faucetAddress: null,
       note:
         'DEMO_CHAIN_MODE is ON. No on-chain calls are made; BEES reward/penalty ' +
         'logic is stubbed for local development.',
@@ -176,6 +251,7 @@ export function getBlockchainStatus(): BlockchainStatus {
       rpcUrl: null,
       beesTokenAddress: config.beesTokenAddress,
       challengeContractAddress: config.challengeContractAddress,
+      faucetAddress: config.faucetAddress,
       note: 'On-chain mode selected but BASE_RPC_URL is missing.',
     };
   }
@@ -185,6 +261,7 @@ export function getBlockchainStatus(): BlockchainStatus {
     rpcUrl: config.rpcUrl,
     beesTokenAddress: config.beesTokenAddress,
     challengeContractAddress: config.challengeContractAddress,
+    faucetAddress: config.faucetAddress,
     note: 'Connected to Base Sepolia via a viem PublicClient.',
   };
 }

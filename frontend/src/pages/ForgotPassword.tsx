@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 
 import { API_BASE_URL } from '../lib/api';
+import { EnvelopeIcon } from '../components/AuthLayout';
 
 /**
  * Forgot Password page.
@@ -64,14 +65,18 @@ export default function ForgotPassword() {
   }
 
   return (
-    <main className="shell">
-      <header className="shell__header">
-        <h1 className="shell__title">Habitra</h1>
-        <p className="shell__tagline">Autonomous accountability that remembers.</p>
-      </header>
+    <>
+      <h1 className="auth__hero">
+        Reset your <span className="auth__hero-accent">password</span>
+      </h1>
+      <p className="auth__sub">
+        Enter the email on your account and we&apos;ll send you a link to set a
+        new password.
+      </p>
 
-      <section className="card">
-        <h2 className="card__title">Forgot your password?</h2>
+      <section className="card auth__card">
+        <h2 className="auth__card-title">Forgot password</h2>
+        <p className="auth__card-sub">We&apos;ll email you a reset link</p>
 
         {status === 'success' ? (
           <div className="form">
@@ -79,38 +84,34 @@ export default function ForgotPassword() {
               If an account exists for that email, we have sent password reset
               instructions. Please check your inbox (and spam folder).
             </div>
-            <div className="form__footer">
-              <Link to="/login" className="form__link">
-                Back to login
-              </Link>
+            <div className="auth__prompt">
+              <Link to="/login" className="form__link">Back to login</Link>
             </div>
           </div>
         ) : (
           <form className="form" onSubmit={handleSubmit}>
-            <p className="card__text">
-              Enter your email address and we'll send you a link to reset your
-              password.
-            </p>
-
             {status === 'error' && (
               <div className="alert alert--error">{errorMessage}</div>
             )}
 
             <div className="form__group">
-              <label className="form__label" htmlFor="email">
-                Email
-              </label>
-              <input
-                id="email"
-                className="form__input"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
-                autoComplete="email"
-                disabled={status === 'loading'}
-                required
-              />
+              <label className="form__label" htmlFor="email">Email</label>
+              <div className="auth__field">
+                <span className="auth__field-icon" aria-hidden="true">
+                  <EnvelopeIcon />
+                </span>
+                <input
+                  id="email"
+                  className="form__input"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  autoComplete="email"
+                  disabled={status === 'loading'}
+                  required
+                />
+              </div>
             </div>
 
             <button
@@ -121,14 +122,13 @@ export default function ForgotPassword() {
               {status === 'loading' ? 'Sending…' : 'Send reset link'}
             </button>
 
-            <div className="form__footer">
-              <Link to="/login" className="form__link">
-                Back to login
-              </Link>
+            <div className="auth__prompt">
+              Remembered it?{' '}
+              <Link to="/login" className="form__link">Back to login</Link>
             </div>
           </form>
         )}
       </section>
-    </main>
+    </>
   );
 }

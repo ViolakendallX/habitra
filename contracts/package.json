@@ -1,6 +1,7 @@
 {
   "name": "habitra-contracts",
   "version": "0.1.0",
+  "license": "MIT",
   "private": true,
   "description": "Minimal Base (Sepolia) + BEES onchain layer for Habitra. Solidity sources, compile/test tooling and deployment config. Deployment is NEVER executed by any npm script.",
   "scripts": {
@@ -9,6 +10,7 @@
     "test:contracts": "hardhat test",
     "node": "hardhat node",
     "deploy:base-sepolia": "hardhat run scripts/deploy.js --network baseSepolia",
+    "deploy:faucet:base-sepolia": "hardhat run scripts/deployFaucet.js --network baseSepolia",
     "mint:base-sepolia": "hardhat run scripts/mint.js --network baseSepolia"
   },
   "devDependencies": {

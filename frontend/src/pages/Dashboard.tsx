@@ -4,6 +4,8 @@ import { Link } from 'react-router-dom';
 import { NETWORK_ERROR_STATUS, api, isApiError } from '../lib/http';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
+import StatTile from '../components/StatTile';
+import WeekHeatmap from '../components/WeekHeatmap';
 import type {
   AgentRecommendation,
   AgentRecommendationResponse,
@@ -16,8 +18,8 @@ import type {
   CompletionListResponse,
   CompletionStatus,
   Habit,
-  HabitListResponse,
   HabitAnalytics,
+  HabitListResponse,
   UserAnalytics,
   Wallet,
   WalletResponse,
@@ -81,7 +83,7 @@ function dayParts(dayKey: string): { weekday: string; day: number; month: string
 }
 
 function formatLongDate(dayKey: string): string {
-  const parsed = new Date(`${dayKey}T00:00:00.000Z`);
+  const parsed = new Date(dayKey);
   if (Number.isNaN(parsed.getTime())) return dayKey;
   return parsed.toLocaleDateString('en-US', {
     weekday: 'long',
@@ -378,333 +380,347 @@ export default function Dashboard() {
       )}
 
       <div className="dashboard__stack">
-        <section className="card">
-          <h2 className="card__title">Today&apos;s progress</h2>
-
-          {loading && <p className="habits__muted">Loading your day…</p>}
-
-          {!loading && (
-            <div className="today">
-              <div
-                className="progress-ring"
-                style={{ '--progress': todayPercent } as CSSProperties}
-                role="progressbar"
-                aria-valuenow={Math.round(todayPercent)}
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-label="Habits completed today"
-              >
-                <span className="progress-ring__inner">{formatPercent(todayPercent)}</span>
-              </div>
-
-              <div className="today__detail">
-                <p className="today__count">
-                  <strong>{todayCompleted.length}</strong> of {todayTotal} completed
-                </p>
-                <p className="habits__muted">
-                  {todayTotal === 0
-                    ? 'No active habits yet — add one from the Habits page to start a streak.'
-                    : todayCompleted.length === todayTotal
-                      ? 'Everything is done for today. Nice.'
-                      : `${todayTotal - todayCompleted.length} still open today.`}
-                </p>
-
-                {analytics && (
-                  <p className="habits__muted">
-                    Current streak {analytics.overall.currentStreak} day
-                    {analytics.overall.currentStreak === 1 ? '' : 's'} · best{' '}
-                    {analytics.overall.bestStreak} · {formatPercent(analytics.overall.completionRate)}{' '}
-                    completion rate
-                  </p>
-                )}
-
-                <Link className="btn btn--primary" to="/habits">
-                  Review today&apos;s habits
-                </Link>
-              </div>
-            </div>
-          )}
+        {/* At-a-glance stats. Consistency = the backend's completion rate
+            (PRD "consistency score"); no fabricated metric is shown. */}
+        <section className="stat-grid" aria-label="Your progress at a glance">
+          <StatTile
+            label="Consistency"
+            value={analytics ? formatPercent(analytics.overall.completionRate) : '—'}
+            sub="from your habit data"
+            accent
+          />
+          <StatTile
+            label="Current streak"
+            value={analytics ? String(analytics.overall.currentStreak) : '—'}
+            sub="days"
+          />
+          <StatTile
+            label="Today"
+            value={`${todayCompleted.length}/${todayTotal}`}
+            sub="habits done"
+          />
+          <StatTile
+            label="Best streak"
+            value={analytics ? String(analytics.overall.bestStreak) : '—'}
+            sub="days"
+          />
         </section>
 
-        <section className="card">
-          <div className="habits__section-head">
-            <h2 className="card__title">This week</h2>
-            <span className="habits__muted">
-              {formatShortDate(week[0])} – {formatShortDate(week[week.length - 1])}
-            </span>
-          </div>
+        <div className="dashboard__main">
+          <div className="dashboard__col">
+            <section className="card">
+              <h2 className="card__title">Today&apos;s progress</h2>
 
-          <div className="weekstrip" role="group" aria-label="Select a day this week">
-            {dayTally.map(({ day, completed, total }) => {
-              const parts = dayParts(day);
-              const classes = ['weekstrip__day'];
-              if (day === today) classes.push('weekstrip__day--today');
-              if (day === selectedDay) classes.push('weekstrip__day--selected');
+              {loading && <p className="habits__muted">Loading your day…</p>}
 
-              return (
-                <button
-                  key={day}
-                  type="button"
-                  className={classes.join(' ')}
-                  onClick={() => setSelectedDay(day)}
-                  aria-pressed={day === selectedDay}
-                >
-                  <span className="weekstrip__weekday">{parts.weekday}</span>
-                  <span className="weekstrip__date">{parts.day}</span>
-                  <span className="weekstrip__tally">
-                    {total === 0 ? '—' : `${completed}/${total}`}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+              {!loading && (
+                <div className="today">
+                  <div
+                    className="progress-ring"
+                    style={{ '--progress': todayPercent } as CSSProperties}
+                    role="progressbar"
+                    aria-valuenow={Math.round(todayPercent)}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-label="Habits completed today"
+                  >
+                    <span className="progress-ring__inner">{formatPercent(todayPercent)}</span>
+                  </div>
 
-          <p className="habits__muted">
-            {selectedIsToday
-              ? 'Showing today.'
-              : `Showing ${formatLongDate(selectedDay)}. Today stays highlighted.`}
-          </p>
-        </section>
+                  <div className="today__detail">
+                    <p className="today__count">
+                      <strong>{todayCompleted.length}</strong> of {todayTotal} completed
+                    </p>
+                    <p className="habits__muted">
+                      {todayTotal === 0
+                        ? 'No active habits yet — add one from the Habits page to start a streak.'
+                        : todayCompleted.length === todayTotal
+                          ? 'Everything is done for today. Nice.'
+                          : `${todayTotal - todayCompleted.length} still open today.`}
+                    </p>
 
-        <section className="card">
-          <div className="habits__section-head">
-            <h2 className="card__title">My habits</h2>
-            <Link className="btn btn--ghost" to="/habits">
-              Manage habits
-            </Link>
-          </div>
-
-          {loading && <p className="habits__muted">Loading your habits…</p>}
-
-          {!loading && habits.length === 0 && (
-            <p className="habits__muted">
-              You have no active habits yet. Add your first one on the Habits page.
-            </p>
-          )}
-
-          {!loading && habits.length > 0 && (
-            <div className="habit-grid">
-              {habits.map((habit) => {
-                const status = weekStatus[habit.id]?.[selectedDay] ?? null;
-                const stats = analyticsFor(analytics, habit.id);
-
-                return (
-                  <article className="habit-card" key={habit.id}>
-                    <div className="habit-card__head">
-                      <h3 className="habit__name">{habit.name}</h3>
-                      <span className="habit__frequency">
-                        {frequencyLabel(habit)} · target {habit.target}
-                      </span>
-                    </div>
-
-                    {habit.description && (
-                      <p className="habit-card__description">{habit.description}</p>
+                    {analytics && (
+                      <p className="habits__muted">
+                        Current streak {analytics.overall.currentStreak} day
+                        {analytics.overall.currentStreak === 1 ? '' : 's'} · best{' '}
+                        {analytics.overall.bestStreak} · {formatPercent(analytics.overall.completionRate)}{' '}
+                        completion rate
+                      </p>
                     )}
 
-                    <p className="habit-card__state">
-                      {status === 'COMPLETED' && (
-                        <span className="badge badge--ok">
-                          Completed {selectedIsToday ? 'today' : formatShortDate(selectedDay)}
-                        </span>
-                      )}
-                      {status === 'MISSED' && (
-                        <span className="badge badge--miss">
-                          Missed {selectedIsToday ? 'today' : formatShortDate(selectedDay)}
-                        </span>
-                      )}
-                      {!status && <span className="badge">Not recorded yet</span>}
-                    </p>
-
-                    <div className="habit-card__stats">
-                      <span>
-                        Streak: {stats ? `${stats.currentStreak} day${stats.currentStreak === 1 ? '' : 's'}` : '—'}
-                      </span>
-                      <span>Best: {stats ? `${stats.bestStreak} day${stats.bestStreak === 1 ? '' : 's'}` : '—'}</span>
-                      <span>Rate: {stats ? formatPercent(stats.completionRate) : '—'}</span>
-                      {habit.preferredTime && <span>Usual time: {habit.preferredTime}</span>}
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-          )}
-        </section>
-
-        <div className="dashboard__grid">
-          <section className="card">
-            <h2 className="card__title">Active challenge</h2>
-
-            {loading && <p className="habits__muted">Loading your challenge…</p>}
-
-            {!loading && !challenge && (
-              <>
-                <p className="habits__muted">
-                  No challenge yet. Commit to one habit and let Habitra keep score.
-                </p>
-                <Link className="btn btn--primary" to="/challenges">
-                  Open challenges
-                </Link>
-              </>
-            )}
-
-            {!loading && challenge && (
-              <div className="challenge-summary">
-                <div className="challenge-summary__header">
-                  <h3 className="challenge-summary__title">{challenge.title}</h3>
-                  <span className={statusBadgeClass(challenge.status)}>{challenge.status}</span>
-                </div>
-
-                <ProgressBar value={challengeProgress?.completionRate ?? 0} />
-
-                <p className="challenge-summary__meta">
-                  {formatShortDate(challenge.startDate)} → {formatShortDate(challenge.endDate)} ·{' '}
-                  {challenge.durationDays} day{challenge.durationDays === 1 ? '' : 's'}
-                </p>
-
-                {challengeProgress ? (
-                  <div className="challenge-summary__stats">
-                    <span>Completed: {challengeProgress.daysCompleted}</span>
-                    <span>Missed: {challengeProgress.daysMissed}</span>
-                    <span>Pending: {challengeProgress.daysPending}</span>
-                    <span>Allowance: {challengeProgress.remainingMissAllowance}</span>
-                    <span>Elapsed: {challengeProgress.daysElapsed}/{challengeProgress.daysTotal}</span>
+                    <Link className="btn btn--primary" to="/habits">
+                      Review today&apos;s habits
+                    </Link>
                   </div>
-                ) : (
-                  <p className="habits__muted">Progress is not available for this challenge yet.</p>
-                )}
-
-                {challengeProgress?.linkedHabit && (
-                  <p className="habits__muted">Habit: {challengeProgress.linkedHabit.name}</p>
-                )}
-
-                {challenge.failReason && (
-                  <p className="challenge-summary__reason">Failure reason: {challenge.failReason}</p>
-                )}
-
-                <Link className="btn btn--ghost" to="/challenges">
-                  Open challenge details
-                </Link>
-              </div>
-            )}
-          </section>
-
-          <section className="card">
-            <h2 className="card__title">BEES</h2>
-
-            {loading && <p className="habits__muted">Loading stake information…</p>}
-
-            {!loading && !challenge && (
-              <p className="habits__muted">
-                Stake appears here once you commit to a challenge.
-              </p>
-            )}
-
-            {!loading && challenge && (
-              <div className="bees">
-                <p className="bees__amount">
-                  {stakeAmount ? `${stakeAmount} BEES staked` : 'No stake locked yet'}
-                </p>
-
-                {escrow?.stake && (
-                  <p className="bees__status">
-                    <span
-                      className={
-                        escrow.stake.status === 'CONFIRMED' ? 'badge badge--ok' : 'badge'
-                      }
-                    >
-                      {escrow.stake.status}
-                    </span>
-                    <span className="habits__muted">
-                      {escrow.stake.simulated ? 'Simulated' : 'On-chain'} ·{' '}
-                      {escrow.settled ? 'settled' : 'not settled'}
-                    </span>
-                  </p>
-                )}
-
-                <div className="bees__rows">
-                  <p>
-                    <strong>Wallet:</strong>{' '}
-                    {wallet ? shortAddress(wallet.address) : 'not linked'}
-                  </p>
-                  <p>
-                    <strong>Chain:</strong>{' '}
-                    {chainName(wallet?.chainId ?? chain?.defaultChainId ?? DEFAULT_CHAIN_ID)}
-                  </p>
-                  {chain && (
-                    <p>
-                      <strong>Mode:</strong> {chain.mode}
-                    </p>
-                  )}
                 </div>
+              )}
+            </section>
 
-                <p className="habits__muted">
-                  BEES balances are not exposed by the backend yet — only staked
-                  amounts recorded for your challenges are shown here.
-                </p>
+            <section className="card">
+              <div className="habits__section-head">
+                <h2 className="card__title">This week</h2>
+                <span className="habits__muted">
+                  {formatShortDate(week[0])} – {formatShortDate(week[week.length - 1])}
+                </span>
+              </div>
 
-                <Link className="btn btn--ghost" to="/wallet">
-                  Open wallet
+              <WeekHeatmap
+                week={week}
+                dayTally={dayTally}
+                selectedDay={selectedDay}
+                today={today}
+                dayParts={dayParts}
+                onSelectDay={setSelectedDay}
+              />
+
+              <p className="habits__muted">
+                {selectedIsToday
+                  ? 'Showing today.'
+                  : `Showing ${formatLongDate(selectedDay)}. Today stays highlighted.`}
+              </p>
+            </section>
+
+            <section className="card">
+              <div className="habits__section-head">
+                <h2 className="card__title">My habits</h2>
+                <Link className="btn btn--ghost" to="/habits">
+                  Manage habits
                 </Link>
               </div>
-            )}
-          </section>
-        </div>
 
-        <section className="card">
-          <div className="habits__section-head">
-            <h2 className="card__title">AI accountability</h2>
-            <Link className="btn btn--ghost" to="/agent">
-              Open agent
-            </Link>
+              {loading && <p className="habits__muted">Loading your habits…</p>}
+
+              {!loading && habits.length === 0 && (
+                <p className="habits__muted">
+                  You have no active habits yet. Add your first one on the Habits page.
+                </p>
+              )}
+
+              {!loading && habits.length > 0 && (
+                <div className="habit-grid">
+                  {habits.map((habit) => {
+                    const status = weekStatus[habit.id]?.[selectedDay] ?? null;
+                    const stats = analyticsFor(analytics, habit.id);
+
+                    return (
+                      <article className="habit-card" key={habit.id}>
+                        <div className="habit-card__head">
+                          <h3 className="habit__name">{habit.name}</h3>
+                          <span className="habit__frequency">
+                            {frequencyLabel(habit)} · target {habit.target}
+                          </span>
+                        </div>
+
+                        {habit.description && (
+                          <p className="habit-card__description">{habit.description}</p>
+                        )}
+
+                        <p className="habit-card__state">
+                          {status === 'COMPLETED' && (
+                            <span className="badge badge--ok">
+                              Completed {selectedIsToday ? 'today' : formatShortDate(selectedDay)}
+                            </span>
+                          )}
+                          {status === 'MISSED' && (
+                            <span className="badge badge--miss">
+                              Missed {selectedIsToday ? 'today' : formatShortDate(selectedDay)}
+                            </span>
+                          )}
+                          {!status && <span className="badge">Not recorded yet</span>}
+                        </p>
+
+                        <div className="habit-card__stats">
+                          <span>
+                            Streak: {stats ? `${stats.currentStreak} day${stats.currentStreak === 1 ? '' : 's'}` : '—'}
+                          </span>
+                          <span>Best: {stats ? `${stats.bestStreak} day${stats.bestStreak === 1 ? '' : 's'}` : '—'}</span>
+                          <span>Rate: {stats ? formatPercent(stats.completionRate) : '—'}</span>
+                          {habit.preferredTime && <span>Usual time: {habit.preferredTime}</span>}
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
           </div>
 
-          {!insight && (
-            <p className="card__text">
-              Habitra can read your recent habit data and what it remembers about
-              you, then suggest the next best action.
-            </p>
-          )}
+          <div className="dashboard__col">
+            <section className="card">
+              <h2 className="card__title">Active challenge</h2>
 
-          <button
-            className="btn btn--primary"
-            type="button"
-            onClick={() => void loadInsight()}
-            disabled={insightLoading}
-          >
-            {insightLoading ? 'Habitra is thinking…' : 'Get latest insight'}
-          </button>
+              {loading && <p className="habits__muted">Loading your challenge…</p>}
 
-          {insightError && <div className="alert alert--error">{insightError}</div>}
+              {!loading && !challenge && (
+                <>
+                  <p className="habits__muted">
+                    No challenge yet. Commit to one habit and let Habitra keep score.
+                  </p>
+                  <Link className="btn btn--primary" to="/challenges">
+                    Open challenges
+                  </Link>
+                </>
+              )}
 
-          {insight && (
-            <article className="insight">
-              <p className="insight__text">{insight.message}</p>
+              {!loading && challenge && (
+                <div className="challenge-summary">
+                  <div className="challenge-summary__header">
+                    <h3 className="challenge-summary__title">{challenge.title}</h3>
+                    <span className={statusBadgeClass(challenge.status)}>{challenge.status}</span>
+                  </div>
 
-              <div className="insight__row">
-                <h3 className="agent-result__label">Recommendation</h3>
-                <p className="agent-result__text">{insight.recommendation}</p>
+                  <ProgressBar value={challengeProgress?.completionRate ?? 0} />
+
+                  <p className="challenge-summary__meta">
+                    {formatShortDate(challenge.startDate)} → {formatShortDate(challenge.endDate)} ·{' '}
+                    {challenge.durationDays} day{challenge.durationDays === 1 ? '' : 's'}
+                  </p>
+
+                  {challengeProgress ? (
+                    <div className="challenge-summary__stats">
+                      <span>Completed: {challengeProgress.daysCompleted}</span>
+                      <span>Missed: {challengeProgress.daysMissed}</span>
+                      <span>Pending: {challengeProgress.daysPending}</span>
+                      <span>Allowance: {challengeProgress.remainingMissAllowance}</span>
+                      <span>Elapsed: {challengeProgress.daysElapsed}/{challengeProgress.daysTotal}</span>
+                    </div>
+                  ) : (
+                    <p className="habits__muted">Progress is not available for this challenge yet.</p>
+                  )}
+
+                  {challengeProgress?.linkedHabit && (
+                    <p className="habits__muted">Habit: {challengeProgress.linkedHabit.name}</p>
+                  )}
+
+                  {challenge.failReason && (
+                    <p className="challenge-summary__reason">Failure reason: {challenge.failReason}</p>
+                  )}
+
+                  <Link className="btn btn--ghost" to="/challenges">
+                    Open challenge details
+                  </Link>
+                </div>
+              )}
+            </section>
+
+            <section className="card">
+              <h2 className="card__title">BEES</h2>
+
+              {loading && <p className="habits__muted">Loading stake information…</p>}
+
+              {!loading && !challenge && (
+                <p className="habits__muted">
+                  Stake appears here once you commit to a challenge.
+                </p>
+              )}
+
+              {!loading && challenge && (
+                <div className="bees">
+                  <p className="bees__amount">
+                    {stakeAmount ? `${stakeAmount} BEES staked` : 'No stake locked yet'}
+                  </p>
+
+                  {escrow?.stake && (
+                    <p className="bees__status">
+                      <span
+                        className={
+                          escrow.stake.status === 'CONFIRMED' ? 'badge badge--ok' : 'badge'
+                        }
+                      >
+                        {escrow.stake.status}
+                      </span>
+                      <span className="habits__muted">
+                        {escrow.stake.simulated ? 'Simulated' : 'On-chain'} ·{' '}
+                        {escrow.settled ? 'settled' : 'not settled'}
+                      </span>
+                    </p>
+                  )}
+
+                  <div className="bees__rows">
+                    <p>
+                      <strong>Wallet:</strong>{' '}
+                      {wallet ? shortAddress(wallet.address) : 'not linked'}
+                    </p>
+                    <p>
+                      <strong>Chain:</strong>{' '}
+                      {chainName(wallet?.chainId ?? chain?.defaultChainId ?? DEFAULT_CHAIN_ID)}
+                    </p>
+                    {chain && (
+                      <p>
+                        <strong>Mode:</strong> {chain.mode}
+                      </p>
+                    )}
+                  </div>
+
+                  <p className="habits__muted">
+                    BEES balances are not exposed by the backend yet — only staked
+                    amounts recorded for your challenges are shown here.
+                  </p>
+
+                  <Link className="btn btn--ghost" to="/wallet">
+                    Open wallet
+                  </Link>
+                </div>
+              )}
+            </section>
+
+            <section className="card">
+              <div className="habits__section-head">
+                <h2 className="card__title">AI accountability</h2>
+                <Link className="btn btn--ghost" to="/agent">
+                  Open agent
+                </Link>
               </div>
 
-              <div className="insight__row">
-                <h3 className="agent-result__label">Reason</h3>
-                <p className="agent-result__text">{insight.reason}</p>
-              </div>
+              {!insight && (
+                <p className="card__text">
+                  Habitra can read your recent habit data and what it remembers about
+                  you, then suggest the next best action.
+                </p>
+              )}
 
-              <div className="agent-result__meta">
-                <span className={`badge ${insight.memoryUsed ? 'badge--ok' : 'badge--miss'}`}>
-                  {insight.memoryUsed ? 'Memory used' : 'Memory not used'}
-                </span>
-                <span className="agent-result__memory-note">
-                  {insight.memoryUsed
-                    ? 'Informed by what Habitra remembers about your recent behavior.'
-                    : 'Based on your current habit data only — no remembered context this time.'}
-                </span>
-              </div>
+              <button
+                className="btn btn--primary"
+                type="button"
+                onClick={() => void loadInsight()}
+                disabled={insightLoading}
+              >
+                {insightLoading ? 'Habitra is thinking…' : 'Get latest insight'}
+              </button>
 
-              <p className="agent-result__time">Generated: {formatWhen(insight.generatedAt)}</p>
-            </article>
-          )}
-        </section>
+              {insightError && <div className="alert alert--error">{insightError}</div>}
+
+              {insight && (
+                <article className="insight">
+                  <p className="insight__text">{insight.message}</p>
+
+                  <div className="insight__row">
+                    <h3 className="agent-result__label">Recommendation</h3>
+                    <p className="agent-result__text">{insight.recommendation}</p>
+                  </div>
+
+                  <div className="insight__row">
+                    <h3 className="agent-result__label">Reason</h3>
+                    <p className="agent-result__text">{insight.reason}</p>
+                  </div>
+
+                  <div className="agent-result__meta">
+                    <span className={`badge ${insight.memoryUsed ? 'badge--ok' : 'badge--miss'}`}>
+                      {insight.memoryUsed ? 'Memory used' : 'Memory not used'}
+                    </span>
+                    <span className="agent-result__memory-note">
+                      {insight.memoryUsed
+                        ? 'Informed by what Habitra remembers about your recent behavior.'
+                        : 'Based on your current habit data only — no remembered context this time.'}
+                    </span>
+                  </div>
+
+                  <p className="agent-result__time">Generated: {formatWhen(insight.generatedAt)}</p>
+                </article>
+              )}
+            </section>
+          </div>
+        </div>
       </div>
     </main>
   );

@@ -2,6 +2,11 @@ import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 
 import { API_BASE_URL } from '../lib/api';
+import {
+  EyeIcon,
+  EyeOffIcon,
+  LockIcon,
+} from '../components/AuthLayout';
 
 /**
  * Reset Password page.
@@ -28,33 +33,41 @@ export default function ResetPassword() {
 
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [status, setStatus] = useState<Status>('idle');
   const [errorMessage, setErrorMessage] = useState('');
 
   // Show a clear message if the reset link is missing the token parameter.
   if (!token) {
     return (
-      <main className="shell">
-        <header className="shell__header">
-          <h1 className="shell__title">Habitra</h1>
-          <p className="shell__tagline">Autonomous accountability that remembers.</p>
-        </header>
+      <>
+        <h1 className="auth__hero">
+          Invalid <span className="auth__hero-accent">reset link</span>
+        </h1>
+        <p className="auth__sub">
+          This password reset link is missing its token, so it can&apos;t be
+          used to set a new password.
+        </p>
 
-        <section className="card">
-          <h2 className="card__title">Reset password</h2>
+        <section className="card auth__card">
+          <h2 className="auth__card-title">Request a new link</h2>
+          <p className="auth__card-sub">
+            Go back to the forgot password page to receive a fresh reset email.
+          </p>
           <div className="form">
             <div className="alert alert--error">
               This password reset link is invalid or incomplete. Please request
               a new reset link from the forgot password page.
             </div>
-            <div className="form__footer">
+            <div className="auth__prompt">
               <Link to="/forgot-password" className="form__link">
                 Request a new reset link
               </Link>
             </div>
           </div>
         </section>
-      </main>
+      </>
     );
   }
 
@@ -119,14 +132,17 @@ export default function ResetPassword() {
   }
 
   return (
-    <main className="shell">
-      <header className="shell__header">
-        <h1 className="shell__title">Habitra</h1>
-        <p className="shell__tagline">Autonomous accountability that remembers.</p>
-      </header>
+    <>
+      <h1 className="auth__hero">
+        Set a new <span className="auth__hero-accent">password</span>
+      </h1>
+      <p className="auth__sub">
+        Choose a new password for your Habitra account.
+      </p>
 
-      <section className="card">
-        <h2 className="card__title">Reset your password</h2>
+      <section className="card auth__card">
+        <h2 className="auth__card-title">Reset password</h2>
+        <p className="auth__card-sub">Enter your new password below</p>
 
         {status === 'success' ? (
           <div className="form">
@@ -134,55 +150,72 @@ export default function ResetPassword() {
               Your password has been reset successfully. You can now sign in
               with your new password.
             </div>
-            <div className="form__footer">
-              <Link to="/login" className="form__link">
-                Go to login
-              </Link>
+            <div className="auth__prompt">
+              <Link to="/login" className="form__link">Go to login</Link>
             </div>
           </div>
         ) : (
           <form className="form" onSubmit={handleSubmit}>
-            <p className="card__text">
-              Choose a new password for your Habitra account.
-            </p>
-
             {status === 'error' && (
               <div className="alert alert--error">{errorMessage}</div>
             )}
 
             <div className="form__group">
-              <label className="form__label" htmlFor="password">
-                New password
-              </label>
-              <input
-                id="password"
-                className="form__input"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                autoComplete="new-password"
-                disabled={status === 'loading'}
-                required
-              />
-              <span className="form__hint">
-                At least {MIN_PASSWORD_LENGTH} characters.
-              </span>
+              <label className="form__label" htmlFor="password">New password</label>
+              <div className="auth__field auth__field--with-toggle">
+                <span className="auth__field-icon" aria-hidden="true">
+                  <LockIcon />
+                </span>
+                <input
+                  id="password"
+                  className="form__input"
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder={`At least ${MIN_PASSWORD_LENGTH} characters`}
+                  autoComplete="new-password"
+                  disabled={status === 'loading'}
+                  required
+                />
+                <button
+                  type="button"
+                  className="auth__field-toggle"
+                  onClick={() => setShowPassword((value) => !value)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  aria-pressed={showPassword}
+                >
+                  {showPassword ? <EyeOffIcon /> : <EyeIcon />}
+                </button>
+              </div>
             </div>
 
             <div className="form__group">
-              <label className="form__label" htmlFor="confirmPassword">
-                Confirm new password
-              </label>
-              <input
-                id="confirmPassword"
-                className="form__input"
-                type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                autoComplete="new-password"
-                disabled={status === 'loading'}
-                required
-              />
+              <label className="form__label" htmlFor="confirmPassword">Confirm new password</label>
+              <div className="auth__field auth__field--with-toggle">
+                <span className="auth__field-icon" aria-hidden="true">
+                  <LockIcon />
+                </span>
+                <input
+                  id="confirmPassword"
+                  className="form__input"
+                  type={showConfirmPassword ? 'text' : 'password'}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Re-enter your new password"
+                  autoComplete="new-password"
+                  disabled={status === 'loading'}
+                  required
+                />
+                <button
+                  type="button"
+                  className="auth__field-toggle"
+                  onClick={() => setShowConfirmPassword((value) => !value)}
+                  aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
+                  aria-pressed={showConfirmPassword}
+                >
+                  {showConfirmPassword ? <EyeOffIcon /> : <EyeIcon />}
+                </button>
+              </div>
             </div>
 
             <button
@@ -197,14 +230,12 @@ export default function ResetPassword() {
               {status === 'loading' ? 'Resetting…' : 'Reset password'}
             </button>
 
-            <div className="form__footer">
-              <Link to="/login" className="form__link">
-                Back to login
-              </Link>
+            <div className="auth__prompt">
+              <Link to="/login" className="form__link">Back to login</Link>
             </div>
           </form>
         )}
       </section>
-    </main>
+    </>
   );
 }

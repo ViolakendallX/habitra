@@ -4,6 +4,13 @@ import { Link, useNavigate } from 'react-router-dom';
 import { api, isApiError } from '../lib/http';
 import { useAuth } from '../context/AuthContext';
 import type { UserResponse } from '../lib/types';
+import {
+  EnvelopeIcon,
+  EyeIcon,
+  EyeOffIcon,
+  LockIcon,
+  UserIcon,
+} from '../components/AuthLayout';
 
 const MIN_PASSWORD_LENGTH = 8;
 const MAX_PASSWORD_LENGTH = 72;
@@ -62,6 +69,8 @@ export default function Register() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const [status, setStatus] = useState<Status>('idle');
   const [errorMessage, setErrorMessage] = useState('');
@@ -144,14 +153,18 @@ export default function Register() {
   }
 
   return (
-    <main className="shell">
-      <header className="shell__header">
-        <h1 className="shell__title">Habitra</h1>
-        <p className="shell__tagline">Autonomous accountability that remembers.</p>
-      </header>
+    <>
+      <h1 className="auth__hero">
+        Create your <span className="auth__hero-accent">account</span>
+      </h1>
+      <p className="auth__sub">
+        Join Habitra to build habits that actually stick, with an AI that keeps
+        you honest.
+      </p>
 
-      <section className="card">
-        <h2 className="card__title">Create account</h2>
+      <section className="card auth__card">
+        <h2 className="auth__card-title">Sign up</h2>
+        <p className="auth__card-sub">Start your accountability journey</p>
 
         <form className="form" onSubmit={handleSubmit} noValidate>
           {status === 'error' && errorMessage && (
@@ -159,74 +172,104 @@ export default function Register() {
           )}
 
           <div className="form__group">
-            <label className="form__label" htmlFor="name">
-              Name
-            </label>
-            <input
-              id="name"
-              className={`form__input ${fieldErrors.name ? 'form__input--error' : ''}`}
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              autoComplete="name"
-              disabled={status === 'loading'}
-              required
-            />
+            <label className="form__label" htmlFor="name">Name</label>
+            <div className="auth__field">
+              <span className="auth__field-icon" aria-hidden="true">
+                <UserIcon />
+              </span>
+              <input
+                id="name"
+                className={`form__input ${fieldErrors.name ? 'form__input--error' : ''}`}
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Your name"
+                autoComplete="name"
+                disabled={status === 'loading'}
+                required
+              />
+            </div>
             {fieldErrors.name && <span className="form__error-text">{fieldErrors.name}</span>}
           </div>
 
           <div className="form__group">
-            <label className="form__label" htmlFor="email">
-              Email
-            </label>
-            <input
-              id="email"
-              className={`form__input ${fieldErrors.email ? 'form__input--error' : ''}`}
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-              autoComplete="email"
-              disabled={status === 'loading'}
-              required
-            />
+            <label className="form__label" htmlFor="email">Email</label>
+            <div className="auth__field">
+              <span className="auth__field-icon" aria-hidden="true">
+                <EnvelopeIcon />
+              </span>
+              <input
+                id="email"
+                className={`form__input ${fieldErrors.email ? 'form__input--error' : ''}`}
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                autoComplete="email"
+                disabled={status === 'loading'}
+                required
+              />
+            </div>
             {fieldErrors.email && <span className="form__error-text">{fieldErrors.email}</span>}
           </div>
 
           <div className="form__group">
-            <label className="form__label" htmlFor="password">
-              Password
-            </label>
-            <input
-              id="password"
-              className={`form__input ${fieldErrors.password ? 'form__input--error' : ''}`}
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="new-password"
-              disabled={status === 'loading'}
-              required
-            />
-            <span className="form__hint">
-              {MIN_PASSWORD_LENGTH}–{MAX_PASSWORD_LENGTH} characters.
-            </span>
+            <label className="form__label" htmlFor="password">Password</label>
+            <div className="auth__field auth__field--with-toggle">
+              <span className="auth__field-icon" aria-hidden="true">
+                <LockIcon />
+              </span>
+              <input
+                id="password"
+                className={`form__input ${fieldErrors.password ? 'form__input--error' : ''}`}
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder={`${MIN_PASSWORD_LENGTH}–${MAX_PASSWORD_LENGTH} characters`}
+                autoComplete="new-password"
+                disabled={status === 'loading'}
+                required
+              />
+              <button
+                type="button"
+                className="auth__field-toggle"
+                onClick={() => setShowPassword((value) => !value)}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                aria-pressed={showPassword}
+              >
+                {showPassword ? <EyeOffIcon /> : <EyeIcon />}
+              </button>
+            </div>
             {fieldErrors.password && <span className="form__error-text">{fieldErrors.password}</span>}
           </div>
 
           <div className="form__group">
-            <label className="form__label" htmlFor="confirmPassword">
-              Confirm password
-            </label>
-            <input
-              id="confirmPassword"
-              className={`form__input ${fieldErrors.confirmPassword ? 'form__input--error' : ''}`}
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              autoComplete="new-password"
-              disabled={status === 'loading'}
-              required
-            />
+            <label className="form__label" htmlFor="confirmPassword">Confirm password</label>
+            <div className="auth__field auth__field--with-toggle">
+              <span className="auth__field-icon" aria-hidden="true">
+                <LockIcon />
+              </span>
+              <input
+                id="confirmPassword"
+                className={`form__input ${fieldErrors.confirmPassword ? 'form__input--error' : ''}`}
+                type={showConfirmPassword ? 'text' : 'password'}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Re-enter your password"
+                autoComplete="new-password"
+                disabled={status === 'loading'}
+                required
+              />
+              <button
+                type="button"
+                className="auth__field-toggle"
+                onClick={() => setShowConfirmPassword((value) => !value)}
+                aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
+                aria-pressed={showConfirmPassword}
+              >
+                {showConfirmPassword ? <EyeOffIcon /> : <EyeIcon />}
+              </button>
+            </div>
             {fieldErrors.confirmPassword && (
               <span className="form__error-text">{fieldErrors.confirmPassword}</span>
             )}
@@ -240,13 +283,14 @@ export default function Register() {
             {status === 'loading' ? 'Creating account…' : 'Create account'}
           </button>
 
-          <div className="form__footer">
-            <Link to="/login" className="form__link">
-              Already have an account? Sign in
-            </Link>
+          <div className="auth__divider" role="separator">or</div>
+
+          <div className="auth__prompt">
+            Already have an account?{' '}
+            <Link to="/login" className="form__link">Sign in</Link>
           </div>
         </form>
       </section>
-    </main>
+    </>
   );
 }

@@ -1,16 +1,137 @@
 :root {
   --habitra-bg: #f7f7f5;
   --habitra-surface: #ffffff;
+  --habitra-surface-2: #faf9f6;
   --habitra-border: #e4e4e0;
   --habitra-text: #1b1b19;
   --habitra-muted: #6b6b66;
+  --habitra-faint: #8a8a82;
   --habitra-accent: #c2410c;
+  --habitra-accent-2: #9a3412;
+  --habitra-accent-soft: #fef2ec;
+  --habitra-success: #16a34a;
+  --habitra-warning: #d97706;
+  --habitra-danger: #dc2626;
+
+  --ring-track: #ebebe6;
+
+  --badge-ok-bg: #f0fdf4;
+  --badge-ok-border: #bbf7d0;
+  --badge-ok-text: #166534;
+  --badge-miss-bg: #fef2f2;
+  --badge-miss-border: #fecaca;
+  --badge-miss-text: #991b1b;
+
+  --alert-error-bg: #fef2f2;
+  --alert-error-border: #fecaca;
+  --alert-error-text: #991b1b;
+  --alert-success-bg: #f0fdf4;
+  --alert-success-border: #bbf7d0;
+  --alert-success-text: #166534;
+
+  --card-shadow: 0 1px 2px rgba(27, 27, 25, 0.05);
 
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial,
     sans-serif;
   line-height: 1.5;
   color: var(--habitra-text);
   background-color: var(--habitra-bg);
+}
+
+/*
+ * Dark theme — applied to every protected (authenticated) page. AppLayout
+ * toggles `document.body[data-theme="dark"]` on mount and clears it on unmount,
+ * so the public auth pages keep the light theme. Every component rule below is
+ * token-driven, so flipping these variables repaints the navbar, cards,
+ * buttons, badges, alerts, the progress ring, and the notification bell/panel
+ * with no class-name changes.
+ */
+body[data-theme='dark'] {
+  --habitra-bg: #0b0b12;
+  --habitra-surface: #15151f;
+  --habitra-surface-2: #1b1b27;
+  --habitra-border: rgba(255, 255, 255, 0.08);
+  --habitra-text: #f4f4f7;
+  --habitra-muted: #9a9aaE;
+  --habitra-faint: #9aa1b8;
+  --habitra-accent: #a78bFA;
+  --habitra-accent-2: #7c6bf0;
+  --habitra-accent-soft: rgba(167, 139, 250, 0.14);
+  /* Light lavender for the small uppercase statistic labels (CONSISTENCY,
+   * CURRENT STREAK, TODAY, BEST STREAK) — readable on the dark cards. */
+  --habitra-label: #c4b5fd;
+  --habitra-success: #34d399;
+  --habitra-warning: #f59e0b;
+  --habitra-danger: #f87171;
+
+  --ring-track: rgba(255, 255, 255, 0.08);
+
+  --badge-ok-bg: rgba(52, 211, 153, 0.12);
+  --badge-ok-border: rgba(52, 211, 153, 0.35);
+  --badge-ok-text: #6ee7b7;
+  --badge-miss-bg: rgba(248, 113, 113, 0.12);
+  --badge-miss-border: rgba(248, 113, 113, 0.35);
+  --badge-miss-text: #fca5a5;
+
+  --alert-error-bg: rgba(248, 113, 113, 0.10);
+  --alert-error-border: rgba(248, 113, 113, 0.35);
+  --alert-error-text: #fca5a5;
+  --alert-success-bg: rgba(52, 211, 153, 0.10);
+  --alert-success-border: rgba(52, 211, 153, 0.35);
+  --alert-success-text: #6ee7b7;
+
+  --card-shadow: 0 12px 32px rgba(0, 0, 0, 0.38);
+
+  /*
+   * Critical: the :root block sets `color` and `background-color` from the
+   * LIGHT tokens. Custom properties inherit the dark values, but the `color`
+   * PROPERTY itself was resolved on <html> with the light token. Without
+   * re-flipping these properties here, every element with no explicit color
+   * (section headings, numbers, habit names, badges, the progress ring, the
+   * hero tagline) kept the near-black light text and vanished against the dark
+   * cards, and the body stayed on the light background. This is what makes the
+   * Dashboard text readable.
+   */
+  color: var(--habitra-text);
+  background-color: var(--habitra-bg);
+
+  color-scheme: dark;
+}
+
+/* A subtle lavender wash at the top of the canvas, like the references. */
+body[data-theme='dark']::before {
+  content: '';
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: 320px;
+  pointer-events: none;
+  background: radial-gradient(
+    60% 120% at 82% -10%,
+    rgba(167, 139, 250, 0.16),
+    transparent 70%
+  );
+  z-index: 0;
+}
+
+/* The dashboard content sits above the lavender wash, but the navbar — and
+ * its dropdown notification panel — must stay above the dashboard content, so
+ * the panel is never covered by cards or quick-action buttons underneath it. */
+body[data-theme='dark'] .shell--dashboard {
+  position: relative;
+  z-index: 1;
+}
+
+/* Every other protected page also renders its <main className="shell"> above
+ * the wash, so the header/title near the top of the canvas is never tinted.
+ * The navbar (z-index: 30) still stays above both. */
+body[data-theme='dark'] .shell {
+  position: relative;
+  z-index: 1;
+}
+
+body[data-theme='dark'] .navbar {
+  position: relative;
+  z-index: 30;
 }
 
 * {
@@ -42,8 +163,9 @@ body {
 .card {
   background-color: var(--habitra-surface);
   border: 1px solid var(--habitra-border);
-  border-radius: 12px;
+  border-radius: 14px;
   padding: 24px;
+  box-shadow: var(--card-shadow);
 }
 
 .card__title {
@@ -161,15 +283,15 @@ body {
 }
 
 .alert--error {
-  background-color: #fef2f2;
-  border: 1px solid #fecaca;
-  color: #991b1b;
+  background-color: var(--alert-error-bg);
+  border: 1px solid var(--alert-error-border);
+  color: var(--alert-error-text);
 }
 
 .alert--success {
-  background-color: #f0fdf4;
-  border: 1px solid #bbf7d0;
-  color: #166534;
+  background-color: var(--alert-success-bg);
+  border: 1px solid var(--alert-success-border);
+  color: var(--alert-success-text);
 }
 
 /*
@@ -321,15 +443,15 @@ body {
 }
 
 .badge--ok {
-  background-color: #f0fdf4;
-  border-color: #bbf7d0;
-  color: #166534;
+  background-color: var(--badge-ok-bg);
+  border-color: var(--badge-ok-border);
+  color: var(--badge-ok-text);
 }
 
 .badge--miss {
-  background-color: #fef2f2;
-  border-color: #fecaca;
-  color: #991b1b;
+  background-color: var(--badge-miss-bg);
+  border-color: var(--badge-miss-border);
+  color: var(--badge-miss-text);
 }
 
 .btn {
@@ -345,7 +467,7 @@ body {
 }
 
 .btn:hover:not(:disabled) {
-  background-color: #faf9f6;
+  background-color: var(--habitra-surface-2);
 }
 
 .btn:disabled {
@@ -367,6 +489,13 @@ body {
 .btn--danger {
   border-color: #fecaca;
   color: #991b1b;
+}
+
+/* Dark-mode danger button: light-red text + red-tinted border on the dark
+ * card instead of the light-page dark-red text, which vanished on the card. */
+body[data-theme='dark'] .btn--danger {
+  color: var(--habitra-danger);
+  border-color: rgba(248, 113, 113, 0.45);
 }
 
 .btn--ghost {
@@ -502,6 +631,13 @@ body {
   color: #991b1b;
 }
 
+/* Dark-mode failure reason: light-red so it stays readable on the dark card
+ * instead of the light-page #991b1b, which vanished against the surface. */
+body[data-theme='dark'] .challenge-summary__reason,
+body[data-theme='dark'] .challenge-details__reason {
+  color: var(--alert-error-text);
+}
+
 .challenge-details {
   margin-top: 16px;
 }
@@ -533,7 +669,7 @@ body {
 /* Wallet page */
 .wallet__detail {
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: auto minmax(0, 1fr);
   gap: 4px 12px;
   align-items: baseline;
   margin-bottom: 8px;
@@ -548,12 +684,19 @@ body {
 .wallet__value {
   margin: 0;
   font-size: 0.9375rem;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .wallet__address {
   margin: 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.875rem;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
   word-break: break-all;
 }
 
@@ -567,20 +710,30 @@ body {
   color: var(--habitra-muted);
 }
 
+/* Two columns on wide screens, but every track is minmax(0, 1fr) so long RPC
+ * URLs and 42-char hex addresses can wrap inside the cell instead of pushing
+ * the grid (and therefore the card, and therefore the page) wider than the
+ * viewport. The p children get min-width: 0 + overflow-wrap: anywhere so the
+ * wrap actually fires. */
 .wallet__grid {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px 16px;
 }
 
 .wallet__grid p {
   margin: 0;
   font-size: 0.9rem;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  box-sizing: border-box;
 }
 
 @media (min-width: 560px) {
   .wallet__grid {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
 }
 
@@ -591,7 +744,7 @@ body {
  */
 
 .shell--dashboard {
-  max-width: 960px;
+  max-width: 1080px;
   padding: 32px 16px 64px;
 }
 
@@ -604,9 +757,17 @@ body {
 .dashboard__header {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
   align-items: flex-start;
+  justify-content: space-between;
   margin-bottom: 8px;
+}
+
+@media (min-width: 700px) {
+  .dashboard__header {
+    flex-direction: row;
+    align-items: center;
+  }
 }
 
 .dashboard__header .shell__tagline {
@@ -666,6 +827,7 @@ body {
 .today__count {
   margin: 0;
   font-size: 1.0625rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .today__count strong {
@@ -681,7 +843,7 @@ body {
   place-items: center;
   background: conic-gradient(
     var(--habitra-accent) calc(var(--progress, 0) * 1%),
-    #ebebe6 0
+    var(--ring-track) 0
   );
 }
 
@@ -704,19 +866,37 @@ body {
 }
 
 .weekstrip__day {
-  padding: 8px 2px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 62px;
+  padding: 6px 2px;
   border: 1px solid var(--habitra-border);
-  border-radius: 10px;
-  background-color: var(--habitra-surface);
+  border-radius: 12px;
+  background-color: var(--habitra-surface-2);
   color: var(--habitra-text);
   font-family: inherit;
   text-align: center;
   cursor: pointer;
-  transition: background-color 0.15s ease, border-color 0.15s ease;
+  transition: transform 0.12s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .weekstrip__day:hover {
-  background-color: #faf9f6;
+  transform: translateY(-1px);
+  border-color: var(--habitra-accent);
+}
+
+.weekstrip__day--today {
+  border-color: var(--habitra-accent);
+  box-shadow: inset 0 0 0 1px var(--habitra-accent);
+}
+
+.weekstrip__day--selected {
+  border-color: var(--habitra-accent);
+  box-shadow: 0 0 0 2px var(--habitra-accent);
+  color: var(--habitra-text);
 }
 
 .weekstrip__day--today {
@@ -724,15 +904,17 @@ body {
 }
 
 .weekstrip__day--selected {
-  background-color: #fef2ec;
+  background-color: var(--habitra-accent-soft);
   border-color: var(--habitra-accent);
-  color: var(--habitra-accent);
+  /* Selection is shown by the accent ring; keep the text white so it stays
+   * readable on the tinted (heat) fill of completed days. */
+  color: var(--habitra-text);
 }
 
 .weekstrip__weekday {
   display: block;
   font-size: 0.6875rem;
-  color: var(--habitra-muted);
+  color: var(--habitra-text);
 }
 
 .weekstrip__date {
@@ -745,7 +927,7 @@ body {
 .weekstrip__tally {
   display: block;
   font-size: 0.6875rem;
-  color: var(--habitra-muted);
+  color: var(--habitra-text);
 }
 
 /* Habit cards */
@@ -802,7 +984,7 @@ body {
   width: 100%;
   height: 8px;
   border-radius: 999px;
-  background-color: #ebebe6;
+  background-color: var(--ring-track);
   overflow: hidden;
 }
 
@@ -900,6 +1082,15 @@ body {
   text-decoration: none;
 }
 
+body[data-theme='dark'] .navbar__brand {
+  color: var(--habitra-text);
+}
+
+.navbar__brand span,
+.navbar__brand b {
+  color: var(--habitra-accent);
+}
+
 .navbar__links {
   list-style: none;
   margin: 0;
@@ -928,7 +1119,35 @@ body {
 
 .navbar__link--active {
   color: var(--habitra-accent);
-  background-color: #fef2ec;
+  background-color: var(--habitra-accent-soft);
+}
+
+/* Dark-mode navbar: widen to the dashboard content width, and flip the
+ * hover fill so it reads as a dark surface instead of the light hardcoded
+ * value used on the light pages. */
+body[data-theme='dark'] .navbar__inner {
+  max-width: 1080px;
+}
+
+body[data-theme='dark'] .navbar__link:hover {
+  background-color: var(--habitra-surface-2);
+  color: var(--habitra-text);
+}
+
+/* Nav links / username read as light gray in the dark navbar; the active link
+ * keeps the lavender accent from `.navbar__link--active`. */
+body[data-theme='dark'] .navbar__link {
+  color: #c9c9d6;
+}
+
+body[data-theme='dark'] .navbar__user {
+  color: #c9c9d6;
+}
+
+/* Badge count sits on the lavender accent fill — near-black reads far better
+ * than white there. Light pages keep the white badge text. */
+body[data-theme='dark'] .notifications__badge {
+  color: #15151f;
 }
 
 .navbar__account {
@@ -993,7 +1212,7 @@ body {
 }
 
 .notifications__bell:hover {
-  background-color: #faf9f6;
+  background-color: var(--habitra-surface-2);
   color: var(--habitra-text);
 }
 
@@ -1061,11 +1280,11 @@ body {
   border: 1px solid var(--habitra-border);
   border-left: 3px solid var(--habitra-border);
   border-radius: 8px;
-  background-color: #fcfcfa;
+  background-color: var(--habitra-surface-2);
 }
 
 .notifications__item--warning {
-  border-left-color: #b45309;
+  border-left-color: var(--habitra-warning);
 }
 
 .notifications__item--urgent {
@@ -1100,7 +1319,7 @@ body {
 }
 
 .notifications__dismiss:hover {
-  background-color: #f1f0ec;
+  background-color: var(--habitra-surface);
   color: var(--habitra-text);
 }
 
@@ -1199,5 +1418,556 @@ body {
     left: 16px;
     right: 16px;
     width: auto;
+  }
+}
+
+/*
+ * Redesigned Dashboard layout (visual only). All building blocks below reuse
+ * the existing component classes (.card, .today, .progress-ring, .habit-card,
+ * .weekstrip__day, .badge, .insight) so the UI tests keep matching them. The
+ * dark theme is scoped to <body data-theme="dark">, toggled on every protected
+ * page via AppLayout.
+ */
+
+/* Hero greeting band */
+.dashboard__hero {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+@media (min-width: 700px) {
+  .dashboard__hero {
+    flex-direction: row;
+    align-items: flex-end;
+  }
+}
+
+.dashboard__hero .shell__title {
+  font-size: 1.875rem;
+  letter-spacing: -0.025em;
+  line-height: 1.15;
+}
+
+@media (min-width: 700px) {
+  .dashboard__hero .shell__title {
+    font-size: 2.1rem;
+  }
+}
+
+.dashboard__hero .shell__tagline {
+  margin: 4px 0 0;
+  font-size: 0.9375rem;
+}
+
+.dashboard__actions .btn {
+  text-decoration: none;
+}
+
+/* Stat tiles row */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+@media (min-width: 700px) {
+  .stat-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+.stat-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background-color: var(--habitra-surface);
+  border: 1px solid var(--habitra-border);
+  border-radius: 14px;
+  padding: 16px 18px;
+  box-shadow: var(--card-shadow);
+}
+
+.stat-tile__label {
+  margin: 0;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--habitra-label, var(--habitra-muted));
+}
+
+.stat-tile__value {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--habitra-text);
+}
+
+.stat-tile--accent .stat-tile__value {
+  color: var(--habitra-accent);
+}
+
+.stat-tile__sub {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--habitra-faint);
+}
+
+/* Two-column dashboard body */
+.dashboard__main {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+@media (min-width: 1024px) {
+  .dashboard__main {
+    grid-template-columns: 1.4fr 1fr;
+    align-items: start;
+  }
+}
+
+.dashboard__col {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+/* The AI accountability card reads as a distinct "thinking" surface. */
+.dashboard__col .card:has(.insight) {
+  border-color: var(--habitra-accent-soft);
+}
+
+body[data-theme='dark'] .dashboard__col .card:has(.insight) {
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.38), inset 0 0 0 1px var(--habitra-accent-soft);
+}
+
+/* Challenge BEES staking panel (Phase 3) */
+
+.stake-panel__facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px 16px;
+  margin: 0 0 16px;
+}
+
+.stake-panel__facts dt {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--habitra-faint);
+}
+
+.stake-panel__facts dd {
+  margin: 2px 0 0;
+  font-weight: 600;
+  color: var(--habitra-text);
+}
+
+.stake-steps {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.stake-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--habitra-border);
+  border-radius: 10px;
+  background-color: var(--habitra-surface-2);
+  font-size: 0.9375rem;
+}
+
+.stake-step__label {
+  font-weight: 600;
+  color: var(--habitra-text);
+}
+
+.stake-step__state {
+  margin-left: auto;
+  font-size: 0.8125rem;
+  color: var(--habitra-muted);
+}
+
+.stake-step--done {
+  border-color: var(--alert-success-border);
+  background-color: var(--alert-success-bg);
+}
+
+.stake-step--done .stake-step__state {
+  color: var(--alert-success-text);
+}
+
+.stake-step--active {
+  border-color: var(--habitra-accent);
+  background-color: var(--habitra-accent-soft);
+}
+
+.stake-step--active .stake-step__state {
+  color: var(--habitra-accent);
+}
+
+.stake-step--failed {
+  border-color: var(--alert-error-border);
+  background-color: var(--alert-error-bg);
+}
+
+.stake-step--failed .stake-step__state {
+  color: var(--alert-error-text);
+}
+
+.stake-panel__hash {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8125rem;
+  color: var(--habitra-muted);
+}
+
+/*
+ * Public authentication pages (login, register, forgot-password, reset-password).
+ * The dark theme is set on <body> by AuthLayout (mirrors how AppLayout does it
+ * for the protected app). These classes are scoped to that surface only, so the
+ * rest of the app is unaffected.
+ */
+.auth {
+  position: relative;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
+}
+
+/* Soft purple ambient glows — left and bottom-right, blurred and translucent.
+ * They sit behind every child (header / main / footer) so the form card reads
+ * as the bright surface in front of the wash. */
+.auth::before,
+.auth::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+  z-index: 0;
+  border-radius: 50%;
+  filter: blur(48px);
+}
+
+.auth::before {
+  width: 560px;
+  height: 560px;
+  left: -180px;
+  top: 8%;
+  background: radial-gradient(
+    circle,
+    rgba(124, 107, 240, 0.32),
+    transparent 65%
+  );
+}
+
+.auth::after {
+  width: 620px;
+  height: 620px;
+  right: -200px;
+  bottom: -120px;
+  background: radial-gradient(
+    circle,
+    rgba(139, 92, 246, 0.24),
+    transparent 65%
+  );
+}
+
+.auth__bar,
+.auth__main,
+.auth__footer {
+  position: relative;
+  z-index: 1;
+}
+
+/* Top brand bar */
+.auth__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 18px 24px;
+}
+
+.auth__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--habitra-text);
+  text-decoration: none;
+  font-size: 1.0625rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.auth__brand-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #7c6bf0, #a78bfa);
+  color: #fff;
+  box-shadow:
+    0 6px 20px rgba(124, 107, 240, 0.38),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.auth__brand-name {
+  color: var(--habitra-text);
+}
+
+.auth__pills {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--habitra-muted);
+  font-size: 0.8125rem;
+}
+
+.auth__pill-sep {
+  color: var(--habitra-faint);
+}
+
+/* Centered column for the hero + card */
+.auth__main {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  width: 100%;
+  max-width: 460px;
+  margin: 0 auto;
+  padding: 24px 20px 40px;
+}
+
+.auth__hero {
+  margin: 0;
+  text-align: center;
+  font-size: 2.25rem;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  color: var(--habitra-text);
+  line-height: 1.1;
+}
+
+.auth__hero-accent {
+  color: var(--habitra-accent);
+}
+
+.auth__sub {
+  margin: -8px 0 8px;
+  text-align: center;
+  color: var(--habitra-muted);
+  font-size: 0.9375rem;
+  line-height: 1.5;
+}
+
+/* The card keeps the existing .card token styling; the modifier adds
+ * generous padding and a slightly larger radius for the premium feel. */
+.auth__card {
+  width: 100%;
+  padding: 28px;
+  border-radius: 16px;
+}
+
+.auth__card-title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--habitra-text);
+}
+
+.auth__card-sub {
+  margin: 4px 0 20px;
+  color: var(--habitra-muted);
+  font-size: 0.875rem;
+}
+
+/* Spacious form fields with a leading icon. The icon is decorative (the
+ * label is the accessible name) so it sits in a pointer-events:none span. */
+.auth__field {
+  position: relative;
+}
+
+.auth__field .form__input {
+  padding-top: 11px;
+  padding-bottom: 11px;
+  padding-left: 38px;
+  background-color: var(--habitra-surface-2);
+  border-color: rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+}
+
+.auth__field--with-toggle .form__input {
+  padding-right: 42px;
+}
+
+.auth__field .form__input:focus {
+  border-color: var(--habitra-accent);
+  box-shadow: 0 0 0 3px var(--habitra-accent-soft);
+  outline: none;
+}
+
+.auth__field-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  color: var(--habitra-faint);
+  pointer-events: none;
+}
+
+.auth__field-toggle {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--habitra-faint);
+  cursor: pointer;
+  border-radius: 8px;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.auth__field-toggle:hover {
+  color: var(--habitra-text);
+  background-color: var(--habitra-surface);
+}
+
+/* Right-aligned link under a single field (e.g. "Forgot password?"). */
+.auth__forgot {
+  margin-top: -4px;
+  text-align: right;
+}
+
+/* The "or" separator between the primary action and the secondary prompt. */
+.auth__divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 6px 0 2px;
+  color: var(--habitra-faint);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.auth__divider::before,
+.auth__divider::after {
+  content: '';
+  flex: 1 1 auto;
+  height: 1px;
+  background-color: var(--habitra-border);
+}
+
+/* Centred sign-in / sign-up / reset prompt with a purple link. */
+.auth__prompt {
+  text-align: center;
+  color: var(--habitra-muted);
+  font-size: 0.875rem;
+}
+
+.auth__prompt .form__link {
+  font-weight: 600;
+}
+
+/* Primary CTA inside the auth card: a deeper, more saturated purple than the
+ * default .form__btn so the white label has real contrast and the button
+ * reads as the dominant action. */
+.auth__card .form__btn {
+  padding: 12px 18px;
+  font-weight: 600;
+  font-size: 0.9375rem;
+  border-radius: 10px;
+  background-color: #7c6bf0;
+  color: #ffffff;
+  border: none;
+  box-shadow: 0 8px 22px rgba(124, 107, 240, 0.32);
+}
+
+.auth__card .form__btn:hover:not(:disabled) {
+  background-color: #7c6bf0;
+  filter: brightness(1.08);
+  opacity: 1;
+}
+
+.auth__card .form__btn:disabled {
+  opacity: 0.5;
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+/* Quiet bottom footer */
+.auth__footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 20px 24px 28px;
+  color: var(--habitra-faint);
+  font-size: 0.8125rem;
+}
+
+.auth__footer-sep {
+  color: var(--habitra-border);
+}
+
+/* Stack the brand bar on narrow screens; hide the tagline pills so the brand
+ * stays the focal point. */
+@media (max-width: 640px) {
+  .auth__bar {
+    padding: 14px 16px;
+  }
+
+  .auth__pills {
+    display: none;
+  }
+
+  .auth__hero {
+    font-size: 1.875rem;
+  }
+
+  .auth__main {
+    padding: 16px 16px 32px;
+    gap: 18px;
+  }
+
+  .auth__card {
+    padding: 22px;
+    border-radius: 14px;
+  }
+
+  .auth__footer {
+    padding: 16px 16px 24px;
+    flex-wrap: wrap;
   }
 }

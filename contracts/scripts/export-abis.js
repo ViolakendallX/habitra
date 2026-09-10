@@ -23,6 +23,11 @@ const CONTRACTS = [
     constName: 'habitraChallengeEscrowAbi',
     typeName: 'HabitraChallengeEscrowAbi',
   },
+  {
+    artifact: 'HabitraBeesFaucet',
+    constName: 'habitraBeesFaucetAbi',
+    typeName: 'HabitraBeesFaucetAbi',
+  },
 ];
 
 const root = path.resolve(__dirname, '..');

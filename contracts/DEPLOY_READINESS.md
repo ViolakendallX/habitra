@@ -1,7 +1,13 @@
 # Habitra — Base Sepolia Deployment Readiness
 
-**Status:** READY for a safe, manual, operator-triggered deployment.
-**No deployment was performed.** No transaction was broadcast. No key was read, printed, logged, committed, or requested. No Solidity was modified.
+> **STATUS UPDATE — the deployment described here has since been performed.**
+> This document was written as a pre-deployment readiness review and is retained
+> for the record. Both contracts are now live on Base Sepolia (84532) and a stake
+> is locked. See [§6 Deployment outcome](#6-deployment-outcome).
+> **Settlement has NOT been executed.**
+
+**Status at time of writing:** READY for a safe, manual, operator-triggered deployment.
+No transaction had yet been broadcast. No key was read, printed, logged, committed, or requested. No Solidity was modified.
 
 ---
 
@@ -86,4 +92,28 @@ Then keep `DEMO_CHAIN_MODE=true` until you explicitly choose to flip to live mod
 
 ---
 
-*Prepared by WorkBuddy AI. Nothing was deployed, broadcast, committed, or pushed.*
+## 6. Deployment outcome
+
+The operator subsequently deployed both contracts to Base Sepolia. Verified
+against a live RPC:
+
+| Contract | Address |
+| --- | --- |
+| BEES | `0x43e67b33248e3262fe12d3ae826850936a2d1cd9` |
+| HabitraChallengeEscrow | `0x3211fe09b5ad90a40d4a21f779d07c1a7e0c3c4f` |
+
+Three transactions in total:
+
+| Step | Transaction | Detail |
+| --- | --- | --- |
+| Mint | `0xf473926151989e969ec542fbef218a8fcec0297ee1f77457817df77e28a52870` | 5 BEES minted to the demo user |
+| Approve | `0x570c29f958ef75ec19d60fcc09b8772c66dd4bb6b2c97911b9d10329efbd73ec` | Block 46581162, escrow approved for 5 BEES |
+| Lock | `0x7bafb7c21c9e7c0a8d26a04fca1385c944b625c63363d1c2854ba5a88efb91c3` | Block 46581419, `lock()` (selector `0x57b2d76f`), status success |
+
+Commitment id `1` holds 5 BEES with `settled = false` and `isPending = true`.
+**No settlement has been executed** — no reward paid, no penalty slashed.
+
+---
+
+*Prepared by WorkBuddy AI. The readiness review itself deployed nothing; the
+subsequent operator deployment is recorded in §6.*

@@ -5,12 +5,14 @@ import { agentRouter } from './routes/agent.js';
 import { analyticsRouter } from './routes/analytics.js';
 import { walletRouter } from './routes/wallet.js';
 import { blockchainRouter } from './routes/blockchain.js';
+import { faucetRouter } from './routes/faucet.js';
 import { authRouter } from './routes/auth.js';
 import { devRouter } from './routes/dev.js';
 import { habitsRouter } from './routes/habits.js';
 import { challengesRouter } from './routes/challenges.js';
 import { healthRouter } from './routes/health.js';
 import { passwordResetRouter } from './routes/passwordReset.js';
+import { registerFrontend } from './serveFrontend.js';
 
 /**
  * Builds the Express application.
@@ -32,11 +34,16 @@ export function createApp(): Express {
   app.use('/api/agent', agentRouter);
   app.use('/api/wallet', walletRouter);
   app.use('/api/blockchain', blockchainRouter);
+  app.use('/api/faucet', faucetRouter);
 
   // Dev-only routes (password-reset test capture, etc.). Never mounted in prod.
   if (!isProduction) {
     app.use('/api/dev', devRouter);
   }
+
+  // Single-origin production: serve the built frontend from this same origin.
+  // No-op in development (Vite owns the UI) and when the build output is absent.
+  registerFrontend(app);
 
   app.use((_req: Request, res: Response) => {
     res.status(404).json({ status: 'error', message: 'Route not found' });

@@ -1,18 +1,47 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import type { Address } from 'viem';
 
 import { api, isApiError } from '../lib/http';
 import { useAuth } from '../context/AuthContext';
 import type {
+  BlockchainStatus,
   Challenge,
+  ChallengeEscrowResponse,
+  ChallengeEscrowState,
   ChallengeListResponse,
   ChallengeResponse,
   ChallengeStatus,
   CreateChallengeInput,
   Habit,
   HabitListResponse,
+  StakeEscrowResponse,
+  WalletResponse,
 } from '../lib/types';
+import { formatBeesAmount, readBeesBalance } from '../lib/wallet/bees';
+import {
+  getInjectedProvider,
+  getWalletChainId,
+  isBaseSepolia,
+  isInjectedWalletAvailable,
+  readAuthorizedAccounts,
+  requestWalletAccounts,
+} from '../lib/wallet/injectedWallet';
+import {
+  DEFAULT_STAKE_BASE_UNITS,
+  DEFAULT_STAKE_BASE_UNITS_TEXT,
+  DEFAULT_STAKE_LABEL,
+  approveBees,
+  lockStake,
+  readBeesAllowance,
+} from '../lib/wallet/stake';
 
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+
+/** EIP-1193 "user rejected the request". */
+const USER_REJECTED_CODE = 4001;
+
+/** Base Sepolia — the only chain Habitra stakes on. */
+const BASE_SEPOLIA_CHAIN_ID = 84532;
 
 interface ChallengeFormValues {
   title: string;
@@ -367,6 +396,233 @@ function ChallengeDetails({ challenge }: { challenge: Challenge }) {
   );
 }
 
+/** `0x1234abcd…5678` — enough to recognise an address or hash, short enough to fit. */
+function shortHex(value: string): string {
+  if (value.length <= 14) return value;
+  return `${value.slice(0, 6)}…${value.slice(-4)}`;
+}
+
+/** Case-insensitive address comparison: EIP-55 checksums differ in case only. */
+function sameAddress(a: string | null | undefined, b: string | null | undefined): boolean {
+  return Boolean(a && b && a.toLowerCase() === b.toLowerCase());
+}
+
+/** Unix seconds of an ISO date string, or null when it cannot be parsed. */
+function toUnixSeconds(value: string): number | null {
+  const ms = Date.parse(value);
+  if (Number.isNaN(ms)) return null;
+  return Math.floor(ms / 1000);
+}
+
+/**
+ * Turn any thrown value into something a user can act on.
+ *
+ * A rejected wallet prompt (4001) is the common case and must not read like a
+ * crash; viem's `shortMessage` carries the decoded revert reason.
+ */
+function stakeErrorMessage(error: unknown): string {
+  if (isApiError(error)) return error.message;
+
+  const code = (error as { code?: number } | null)?.code;
+  if (code === USER_REJECTED_CODE) {
+    return 'You rejected the transaction in your wallet. Nothing was sent and no BEES moved.';
+  }
+
+  const short = (error as { shortMessage?: string } | null)?.shortMessage;
+  if (short) return short;
+
+  if (error instanceof Error && error.message) return error.message;
+
+  return 'Something went wrong while staking BEES. Please try again.';
+}
+
+type StakePhase =
+  | 'idle'
+  | 'preparing'
+  | 'approving'
+  | 'locking'
+  | 'confirming'
+  | 'confirmed'
+  | 'failed';
+
+interface StakeProgress {
+  phase: StakePhase;
+  approvalTxHash: string | null;
+  lockTxHash: string | null;
+  /** True once the lock transaction was actually handed to the wallet. */
+  lockAttempted: boolean;
+  message: string;
+}
+
+const IDLE_PROGRESS: StakeProgress = {
+  phase: 'idle',
+  approvalTxHash: null,
+  lockTxHash: null,
+  lockAttempted: false,
+  message: '',
+};
+
+type StepState = 'pending' | 'active' | 'done' | 'failed';
+
+function stepStateClass(state: StepState): string {
+  return `stake-step stake-step--${state}`;
+}
+
+function stepStateLabel(state: StepState): string {
+  if (state === 'done') return 'Done';
+  if (state === 'active') return 'In progress';
+  if (state === 'failed') return 'Failed';
+  return 'Not started';
+}
+
+interface StakeBeesPanelProps {
+  challenge: Challenge;
+  escrow: ChallengeEscrowState | null;
+  account: Address | null;
+  busy: boolean;
+  progress: StakeProgress;
+  error: string | null;
+  onStake: () => void;
+}
+
+/**
+ * The real BEES staking panel.
+ *
+ * It only renders what actually happened: each step's state comes from the
+ * progress object the page fills in as transactions are signed, so an approval
+ * that succeeded while the lock failed is shown as exactly that — never as a
+ * completed stake.
+ */
+function StakeBeesPanel({
+  challenge,
+  escrow,
+  account,
+  busy,
+  progress,
+  error,
+  onStake,
+}: StakeBeesPanelProps) {
+  const closed = challenge.status === 'COMPLETED'
+    || challenge.status === 'FAILED'
+    || challenge.status === 'ARCHIVED';
+
+  const alreadyStaked = Boolean(escrow?.stake);
+  const confirmed = progress.phase === 'confirmed';
+
+  // Only steps that were actually attempted are allowed to read as failed —
+  // a pre-flight rejection (wrong network, insufficient BEES) must not paint
+  // the lock red when nothing was ever sent.
+  const approvalState: StepState = progress.approvalTxHash
+    ? 'done'
+    : progress.phase === 'approving'
+      ? 'active'
+      : progress.phase === 'failed' && progress.lockAttempted
+        ? 'failed'
+        : 'pending';
+
+  const lockState: StepState = progress.lockTxHash
+    ? 'done'
+    : progress.phase === 'locking'
+      ? 'active'
+      : progress.phase === 'failed' && progress.lockAttempted
+        ? 'failed'
+        : 'pending';
+
+  const confirmState: StepState = confirmed
+    ? 'done'
+    : progress.phase === 'confirming'
+      ? 'active'
+      : progress.phase === 'failed' && progress.lockTxHash
+        ? 'failed'
+        : 'pending';
+
+  return (
+    <section className="card stake-panel">
+      <h2 className="card__title">Stake BEES</h2>
+
+      <p className="card__text">
+        Lock {DEFAULT_STAKE_LABEL} in the Habitra escrow for the length of this challenge. You sign
+        two transactions in your own wallet — an approval and the lock. Habitra never sees your
+        private key.
+      </p>
+
+      <dl className="stake-panel__facts">
+        <div>
+          <dt>Wallet</dt>
+          <dd>{account ? shortHex(account) : 'Not connected'}</dd>
+        </div>
+        <div>
+          <dt>Stake</dt>
+          <dd>{DEFAULT_STAKE_LABEL}</dd>
+        </div>
+        <div>
+          <dt>Network</dt>
+          <dd>Base Sepolia ({BASE_SEPOLIA_CHAIN_ID})</dd>
+        </div>
+        <div>
+          <dt>Lock until</dt>
+          <dd>{formatDate(challenge.endDate)}</dd>
+        </div>
+      </dl>
+
+      <ol className="stake-steps">
+        <li className={stepStateClass(approvalState)}>
+          <span className="stake-step__label">Approve BEES</span>
+          <span className="stake-step__state">{stepStateLabel(approvalState)}</span>
+          {progress.approvalTxHash && (
+            <span className="stake-panel__hash">{shortHex(progress.approvalTxHash)}</span>
+          )}
+        </li>
+        <li className={stepStateClass(lockState)}>
+          <span className="stake-step__label">Lock in escrow</span>
+          <span className="stake-step__state">{stepStateLabel(lockState)}</span>
+          {progress.lockTxHash && (
+            <span className="stake-panel__hash">{shortHex(progress.lockTxHash)}</span>
+          )}
+        </li>
+        <li className={stepStateClass(confirmState)}>
+          <span className="stake-step__label">Confirmed on-chain</span>
+          <span className="stake-step__state">{stepStateLabel(confirmState)}</span>
+        </li>
+      </ol>
+
+      {confirmed && (
+        <div className="alert alert--success">
+          {DEFAULT_STAKE_LABEL} staked and confirmed on Base Sepolia.
+        </div>
+      )}
+
+      {alreadyStaked && !confirmed && (
+        <p className="habits__muted">
+          A stake is already recorded for this challenge
+          {escrow?.stake?.status ? ` (${escrow.stake.status})` : ''}.
+        </p>
+      )}
+
+      {progress.message && !error && (
+        <p className="habits__muted">{progress.message}</p>
+      )}
+
+      {error && <div className="alert alert--error">{error}</div>}
+
+      <div className="challenge-summary__actions">
+        <button
+          className="btn btn--primary"
+          type="button"
+          disabled={busy || closed || alreadyStaked}
+          onClick={onStake}
+        >
+          {busy ? 'Staking…' : `Stake ${DEFAULT_STAKE_LABEL}`}
+        </button>
+      </div>
+
+      {closed && (
+        <p className="habits__muted">This challenge is closed, so no further stake can be locked.</p>
+      )}
+    </section>
+  );
+}
+
 export default function Challenges() {
   const { user } = useAuth();
 
@@ -387,10 +643,42 @@ export default function Challenges() {
 
   const [busyActionId, setBusyActionId] = useState<string | null>(null);
 
+  // --- Phase 3: real BEES staking -----------------------------------------
+  const [browserAccount, setBrowserAccount] = useState<Address | null>(null);
+  const [escrowState, setEscrowState] = useState<ChallengeEscrowState | null>(null);
+  const [staking, setStaking] = useState(false);
+  const [stakeProgress, setStakeProgress] = useState<StakeProgress>(IDLE_PROGRESS);
+  const [stakeError, setStakeError] = useState<string | null>(null);
+
+  /** Guards against a second click landing while transactions are pending. */
+  const stakeInFlight = useRef(false);
+
   const selectedFromList = useMemo(
     () => challenges.find((item) => item.id === selectedId) ?? null,
     [challenges, selectedId],
   );
+
+  // Reflect an already-authorised wallet on load, and follow account switches.
+  useEffect(() => {
+    let cancelled = false;
+
+    void readAuthorizedAccounts().then((accounts) => {
+      if (!cancelled) setBrowserAccount(accounts[0] ?? null);
+    });
+
+    const provider = getInjectedProvider();
+    const onAccountsChanged = (...args: unknown[]) => {
+      const next = Array.isArray(args[0]) ? args[0][0] : undefined;
+      setBrowserAccount(typeof next === 'string' ? (next as Address) : null);
+    };
+
+    provider?.on?.('accountsChanged', onAccountsChanged);
+
+    return () => {
+      cancelled = true;
+      provider?.removeListener?.('accountsChanged', onAccountsChanged);
+    };
+  }, []);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -417,10 +705,21 @@ export default function Challenges() {
     void loadAll();
   }, [loadAll]);
 
+  const refreshEscrow = useCallback(async (challengeId: string) => {
+    try {
+      const data = await api.get<ChallengeEscrowResponse>(`/challenges/${challengeId}/escrow`);
+      setEscrowState(data?.escrow ?? null);
+    } catch {
+      setEscrowState(null);
+    }
+  }, []);
+
   async function openChallenge(challengeId: string) {
     setSelectedId(challengeId);
     setDetailLoading(true);
     setDetailError('');
+    setStakeProgress(IDLE_PROGRESS);
+    setStakeError(null);
 
     try {
       const data = await api.get<ChallengeResponse>(`/challenges/${challengeId}`);
@@ -431,6 +730,8 @@ export default function Challenges() {
     } finally {
       setDetailLoading(false);
     }
+
+    await refreshEscrow(challengeId);
   }
 
   async function createChallenge(values: ChallengeFormValues) {
@@ -477,6 +778,272 @@ export default function Challenges() {
       setBanner({ kind: 'error', text: messageFor(error) });
     } finally {
       setBusyActionId(null);
+    }
+  }
+
+  /**
+   * The real BEES staking flow: approve -> lock -> backend confirmation.
+   *
+   * Every on-chain write is signed by the user's own wallet; the backend only
+   * supplies the call descriptor and then re-verifies the resulting hash
+   * on-chain. `approvalTxHash` / `lockTxHash` are tracked locally so a partial
+   * failure can be reported honestly instead of as a completed stake.
+   */
+  async function stakeBees(challenge: Challenge) {
+    if (stakeInFlight.current) return;
+    stakeInFlight.current = true;
+
+    setStaking(true);
+    setStakeError(null);
+    setBanner(null);
+
+    let approvalTxHash: string | null = null;
+    let lockTxHash: string | null = null;
+    let lockAttempted = false;
+
+    const fail = (message: string) => {
+      setStakeProgress({ phase: 'failed', approvalTxHash, lockTxHash, lockAttempted, message });
+      setStakeError(message);
+      setBanner({ kind: 'error', text: message });
+    };
+
+    try {
+      setStakeProgress({
+        phase: 'preparing',
+        approvalTxHash: null,
+        lockTxHash: null,
+        lockAttempted: false,
+        message: 'Checking your wallet…',
+      });
+
+      // --- 1. Wallet, network and ownership -------------------------------
+      if (!isInjectedWalletAvailable()) {
+        fail('No browser wallet detected. Install a wallet such as MetaMask to stake BEES.');
+        return;
+      }
+
+      const accounts = await requestWalletAccounts();
+      const account = accounts[0];
+      if (!account) {
+        fail('No account was selected. Choose an account in your wallet and try again.');
+        return;
+      }
+      setBrowserAccount(account);
+
+      const chainId = await getWalletChainId();
+      if (!isBaseSepolia(chainId)) {
+        fail(
+          `Your wallet is on chain ${chainId ?? 'unknown'}. Switch it to Base Sepolia `
+          + `(${BASE_SEPOLIA_CHAIN_ID}) in your wallet, then try again.`,
+        );
+        return;
+      }
+
+      const [walletData, status] = await Promise.all([
+        api.get<WalletResponse>('/wallet'),
+        api.get<BlockchainStatus>('/blockchain/status'),
+      ]);
+
+      const linked = walletData?.wallet ?? null;
+      if (!linked) {
+        fail('No wallet is linked to this Habitra account. Link your wallet on the Wallet page first.');
+        return;
+      }
+
+      if (!sameAddress(linked.address, account)) {
+        fail(
+          `Your browser wallet ${shortHex(account)} is not the wallet linked to this account `
+          + `(${shortHex(linked.address)}). Switch accounts in your wallet, or update the linked `
+          + 'address on the Wallet page.',
+        );
+        return;
+      }
+
+      // --- 2. Configuration and balance ------------------------------------
+      const tokenAddress = status?.beesTokenAddress ?? null;
+      const escrowAddress = status?.challengeContractAddress ?? null;
+
+      if (!tokenAddress || !escrowAddress) {
+        fail('The BEES token or escrow contract is not configured on the server, so BEES cannot be staked.');
+        return;
+      }
+
+      if (status?.mode !== 'live') {
+        fail(
+          `On-chain staking is unavailable: the backend is running in "${status?.mode ?? 'unknown'}" mode.`,
+        );
+        return;
+      }
+
+      const balance = await readBeesBalance(tokenAddress, account);
+      if (balance < DEFAULT_STAKE_BASE_UNITS) {
+        fail(
+          `Insufficient BEES: your balance is ${formatBeesAmount(balance)} BEES and this challenge `
+          + `requires ${DEFAULT_STAKE_LABEL}.`,
+        );
+        return;
+      }
+
+      const endsAt = toUnixSeconds(challenge.endDate);
+      if (endsAt === null) {
+        fail('This challenge has no valid end date, so the stake cannot be locked.');
+        return;
+      }
+
+      // --- 3. Ask the backend for the lock to sign -------------------------
+      setStakeProgress({
+        phase: 'preparing',
+        approvalTxHash: null,
+        lockTxHash: null,
+        lockAttempted: false,
+        message: 'Requesting the stake lock from Habitra…',
+      });
+
+      const stakeResponse = await api.post<StakeEscrowResponse>(
+        `/challenges/${challenge.id}/stake`,
+        { amount: DEFAULT_STAKE_BASE_UNITS_TEXT },
+      );
+
+      const result = stakeResponse?.escrow ?? null;
+      if (!result) {
+        fail('The server did not return a stake lock to sign.');
+        return;
+      }
+
+      const descriptor = result.contractCall;
+      if (!descriptor) {
+        // Nothing to sign: a stake already exists for this challenge.
+        setStakeProgress({
+          phase: 'confirmed',
+          approvalTxHash: null,
+          lockTxHash: result.txHash,
+          lockAttempted: false,
+          message: result.message || 'A stake is already recorded for this challenge.',
+        });
+        setBanner({ kind: 'success', text: result.message || 'A stake is already recorded.' });
+        await refreshEscrow(challenge.id);
+        return;
+      }
+
+      if (descriptor.functionName !== 'lock') {
+        fail('The server asked for an unexpected contract call. Nothing was sent.');
+        return;
+      }
+
+      if (!sameAddress(descriptor.address, escrowAddress)) {
+        fail(
+          'The escrow address from the server does not match the deployed escrow. '
+          + 'Nothing was sent, so no BEES moved.',
+        );
+        return;
+      }
+
+      // --- 4. Approve ------------------------------------------------------
+      const allowance = await readBeesAllowance(tokenAddress, account, escrowAddress);
+
+      if (allowance >= DEFAULT_STAKE_BASE_UNITS) {
+        setStakeProgress({
+          phase: 'approving',
+          approvalTxHash: null,
+          lockTxHash: null,
+          lockAttempted: false,
+          message: 'An existing BEES approval covers this stake, so no approval is needed.',
+        });
+      } else {
+        setStakeProgress({
+          phase: 'approving',
+          approvalTxHash: null,
+          lockTxHash: null,
+          lockAttempted: false,
+          message: `Approve ${DEFAULT_STAKE_LABEL} in your wallet…`,
+        });
+
+        approvalTxHash = await approveBees({
+          tokenAddress,
+          spender: escrowAddress,
+          account,
+          amount: DEFAULT_STAKE_BASE_UNITS,
+        });
+
+        setStakeProgress({
+          phase: 'approving',
+          approvalTxHash,
+          lockTxHash: null,
+          lockAttempted: false,
+          message: 'BEES approval confirmed. Locking your stake…',
+        });
+      }
+
+      // --- 5. Lock ---------------------------------------------------------
+      lockAttempted = true;
+
+      setStakeProgress({
+        phase: 'locking',
+        approvalTxHash,
+        lockTxHash: null,
+        lockAttempted: true,
+        message: 'Confirm the stake lock in your wallet…',
+      });
+
+      lockTxHash = await lockStake({
+        escrowAddress,
+        account,
+        challengeId: challenge.id,
+        amount: DEFAULT_STAKE_BASE_UNITS,
+        endsAt,
+      });
+
+      // --- 6. Backend verification ----------------------------------------
+      setStakeProgress({
+        phase: 'confirming',
+        approvalTxHash,
+        lockTxHash,
+        lockAttempted: true,
+        message: 'Lock sent. Habitra is verifying the transaction on-chain…',
+      });
+
+      const confirmation = await api.post<StakeEscrowResponse>(
+        `/challenges/${challenge.id}/escrow/confirm`,
+        { txHash: lockTxHash },
+      );
+
+      const finalHash = confirmation?.escrow?.txHash ?? lockTxHash;
+
+      setStakeProgress({
+        phase: 'confirmed',
+        approvalTxHash,
+        lockTxHash: finalHash,
+        lockAttempted: true,
+        message: 'Stake locked and confirmed on-chain.',
+      });
+      setBanner({
+        kind: 'success',
+        text: `${DEFAULT_STAKE_LABEL} staked and confirmed on Base Sepolia.`,
+      });
+
+      await refreshEscrow(challenge.id);
+    } catch (error) {
+      const detail = stakeErrorMessage(error);
+
+      if (lockTxHash) {
+        // The lock really happened; only the reconciliation failed.
+        fail(
+          `Your lock transaction was sent (${shortHex(lockTxHash)}) but Habitra could not confirm `
+          + `it. ${detail} Your BEES may already be locked on-chain — do not send a second lock. `
+          + 'Reload this challenge to retry the confirmation.',
+        );
+      } else if (approvalTxHash) {
+        // Requirement 10: approval succeeded, lock did not. Never claim success.
+        fail(
+          `Your BEES approval succeeded (${shortHex(approvalTxHash)}) but the stake was NOT `
+          + `locked. ${detail} No BEES left your wallet — try again and the approval will be reused.`,
+        );
+      } else {
+        fail(detail);
+      }
+    } finally {
+      stakeInFlight.current = false;
+      setStaking(false);
     }
   }
 
@@ -579,6 +1146,19 @@ export default function Challenges() {
                         {busy ? 'Evaluating…' : 'Evaluate'}
                       </button>
                     )}
+
+                    {challenge.status !== 'COMPLETED'
+                      && challenge.status !== 'FAILED'
+                      && challenge.status !== 'ARCHIVED' && (
+                      <button
+                        className="btn btn--ghost"
+                        type="button"
+                        disabled={busy || staking}
+                        onClick={() => void openChallenge(challenge.id)}
+                      >
+                        Stake BEES
+                      </button>
+                    )}
                   </div>
                 </li>
               );
@@ -600,7 +1180,18 @@ export default function Challenges() {
           )}
 
           {!detailLoading && !detailError && (selectedChallenge || selectedFromList) && (
-            <ChallengeDetails challenge={selectedChallenge ?? selectedFromList!} />
+            <>
+              <ChallengeDetails challenge={selectedChallenge ?? selectedFromList!} />
+              <StakeBeesPanel
+                challenge={selectedChallenge ?? selectedFromList!}
+                escrow={escrowState}
+                account={browserAccount}
+                busy={staking}
+                progress={stakeProgress}
+                error={stakeError}
+                onStake={() => void stakeBees(selectedChallenge ?? selectedFromList!)}
+              />
+            </>
           )}
         </>
       )}
